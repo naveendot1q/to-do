@@ -1,7 +1,6 @@
--- Run this ENTIRE script in Supabase SQL Editor
--- Dashboard → SQL Editor → New Query → Paste → Run
+-- Run this in Supabase SQL Editor
 
--- 1. Add time slot + task type columns to todos
+-- 1. Add columns to todos (safe - skips if already exist)
 ALTER TABLE todos ADD COLUMN IF NOT EXISTS start_time text;
 ALTER TABLE todos ADD COLUMN IF NOT EXISTS end_time text;
 ALTER TABLE todos ADD COLUMN IF NOT EXISTS task_type text DEFAULT 'custom';
@@ -23,12 +22,8 @@ CREATE TABLE IF NOT EXISTS daily_templates (
 -- 3. Row Level Security
 ALTER TABLE daily_templates ENABLE ROW LEVEL SECURITY;
 
+-- 4. Drop policy if exists, then recreate
+DROP POLICY IF EXISTS "Users can only access their own templates" ON daily_templates;
 CREATE POLICY "Users can only access their own templates"
   ON daily_templates FOR ALL
   USING (auth.uid() = user_id);
-
--- 4. Verify everything worked
-SELECT table_name, column_name, data_type
-FROM information_schema.columns
-WHERE table_name IN ('todos', 'daily_templates')
-ORDER BY table_name, ordinal_position;
