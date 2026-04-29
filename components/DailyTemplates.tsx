@@ -27,7 +27,7 @@ function formatTime(t: string) {
 }
 
 export default function DailyTemplates({ templates, onAdd, onUpdate, onDelete, onApplyToday, applying }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
