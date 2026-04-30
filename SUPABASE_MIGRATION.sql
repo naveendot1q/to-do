@@ -27,3 +27,17 @@ DROP POLICY IF EXISTS "Users can only access their own templates" ON daily_templ
 CREATE POLICY "Users can only access their own templates"
   ON daily_templates FOR ALL
   USING (auth.uid() = user_id);
+
+-- 5. Week-off days table
+CREATE TABLE IF NOT EXISTS week_off_days (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  date text NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  UNIQUE(user_id, date)
+);
+
+ALTER TABLE week_off_days ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can only access their own week off days" ON week_off_days;
+CREATE POLICY "Users can only access their own week off days"
+  ON week_off_days FOR ALL USING (auth.uid() = user_id);

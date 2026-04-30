@@ -9,7 +9,7 @@ interface Props {
   onAdd: (t: Omit<DailyTemplate, "id" | "user_id" | "created_at">) => Promise<void>;
   onUpdate: (id: string, updates: Partial<DailyTemplate>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onApplyToday: () => Promise<void>;
+  onApplyToNext: () => Promise<void>;
   applying: boolean;
 }
 
@@ -68,13 +68,13 @@ export default function DailyTemplates({ templates, onAdd, onUpdate, onDelete, o
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={(e) => { e.stopPropagation(); onApplyToday(); }}
+            onClick={(e) => { e.stopPropagation(); onApplyToNext(); }}
             className="text-xs px-3 py-1 rounded-lg flex items-center gap-1"
             style={{ background: "rgba(232,197,71,0.15)", color: "var(--accent)", border: "1px solid rgba(232,197,71,0.25)" }}
             disabled={applying}
           >
             {applying ? <RefreshCw size={11} className="animate-spin" /> : <Plus size={11} />}
-            {applying ? "Adding..." : "Add to Today"}
+            {applying ? "Adding..." : "Add to Next Day"}
           </button>
           {open ? <ChevronUp size={14} style={{ color: "var(--muted)" }} /> : <ChevronDown size={14} style={{ color: "var(--muted)" }} />}
         </div>
@@ -83,7 +83,7 @@ export default function DailyTemplates({ templates, onAdd, onUpdate, onDelete, o
       {open && (
         <div className="px-4 pb-4 space-y-2 animate-slide-down">
           <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
-            These tasks auto-populate daily. Click "Add to Today" to add them to the selected date.
+            These tasks auto-populate daily. Click "Add to Next Day" to add them to the selected date.
           </p>
 
           {/* Template list */}

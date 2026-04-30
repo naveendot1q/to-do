@@ -32,3 +32,10 @@ export interface DailyTemplate {
 
 export type FilterType = "all" | "active" | "completed" | "overdue";
 export type SortType = "priority" | "start_time" | "due_date" | "created_at";
+
+export interface WeekOffDay {
+  id: string;
+  user_id: string;
+  date: string;
+  created_at: string;
+}

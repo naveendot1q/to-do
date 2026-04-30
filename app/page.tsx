@@ -10,6 +10,7 @@ import DateBrowser from "@/components/DateBrowser";
 import DailyTemplates from "@/components/DailyTemplates";
 import InstallBanner from "@/components/InstallBanner";
 import { LogOut, Search, SlidersHorizontal, CheckCircle2, Clock, AlertTriangle, LayoutList, CalendarDays, RefreshCw } from "lucide-react";
+import NotificationManager from "@/components/NotificationManager";
 
 function toLocalDateStr(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
@@ -59,6 +60,7 @@ export default function Dashboard() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(() => toLocalDateStr(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>("tasks");
+  const [weekOffDays, setWeekOffDays] = useState<string[]>([]);
   const [mood, setMood] = useState<AppMood>("calm");
   const [moodStyle, setMoodStyle] = useState(MOOD_STYLES.calm);
   const moodRef = useRef<AppMood>("calm");
@@ -73,7 +75,7 @@ export default function Dashboard() {
       if (aal?.nextLevel === "aal2" && aal?.currentLevel !== "aal2") { router.replace("/verify-totp"); return; }
       if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal1") { router.replace("/setup-totp"); return; }
       setUser({ id: session.user.id, email: session.user.email });
-      await Promise.all([fetchTodos(session.user.id), fetchTemplates(session.user.id)]);
+      await Promise.all([fetchTodos(session.user.id), fetchTemplates(session.user.id), fetchWeekOff(session.user.id)]);
     })();
     function onKey(e: KeyboardEvent) {
       if (e.key === "n" && !["INPUT","TEXTAREA"].includes((e.target as HTMLElement).tagName)) {
@@ -102,6 +104,22 @@ export default function Dashboard() {
   async function fetchTemplates(uid: string) {
     const { data } = await supabase.from("daily_templates").select("*").eq("user_id", uid).order("created_at");
     setTemplates(data || []);
+  }
+
+  async function fetchWeekOff(uid: string) {
+    const { data } = await supabase.from("week_off_days").select("date").eq("user_id", uid);
+    setWeekOffDays((data || []).map((r: any) => r.date));
+  }
+
+  async function toggleWeekOff(date: string) {
+    if (!user) return;
+    if (weekOffDays.includes(date)) {
+      await supabase.from("week_off_days").delete().eq("user_id", user.id).eq("date", date);
+      setWeekOffDays(p => p.filter(d => d !== date));
+    } else {
+      await supabase.from("week_off_days").insert({ user_id: user.id, date });
+      setWeekOffDays(p => [...p, date]);
+    }
   }
 
   async function addTodo(todo: { title: string; description?: string; priority: Priority; due_date?: string; start_time?: string; end_time?: string; category?: string }) {
@@ -134,12 +152,19 @@ export default function Dashboard() {
     await supabase.from("daily_templates").delete().eq("id", id);
     setTemplates(p => p.filter(t => t.id !== id));
   }
-  async function applyTemplatesToToday() {
+  function getNextDay(dateStr: string) {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  }
+
+  async function applyTemplatesToNext() {
     if (!user || !selectedDate) return;
     setApplying(true);
+    const nextDay = getNextDay(selectedDate);
     const active = templates.filter(t => t.active);
-    const existing = todos.filter(t => t.due_date === selectedDate && t.task_type === "daily").map(t => t.title.toLowerCase());
-    const toInsert = active.filter(t => !existing.includes(t.title.toLowerCase())).map(t => ({ title: t.title, description: t.description, priority: t.priority, start_time: t.start_time, end_time: t.end_time, category: t.category, due_date: selectedDate, user_id: user.id, completed: false, task_type: "daily" }));
+    const existing = todos.filter(t => t.due_date === nextDay && t.task_type === "daily").map(t => t.title.toLowerCase());
+    const toInsert = active.filter(t => !existing.includes(t.title.toLowerCase())).map(t => ({ title: t.title, description: t.description, priority: t.priority, start_time: t.start_time, end_time: t.end_time, category: t.category, due_date: nextDay, user_id: user.id, completed: false, task_type: "daily" }));
     if (toInsert.length > 0) {
       const { data } = await supabase.from("todos").insert(toInsert).select();
       if (data) setTodos(p => [...data, ...p]);
@@ -362,7 +387,7 @@ export default function Dashboard() {
               </div>
 
               {/* Date Browser */}
-              <DateBrowser selectedDate={selectedDate} onDateSelect={(d) => { setSelectedDate(d); setActiveTab("tasks"); }} taskCountsByDate={taskCountsByDate} />
+              <DateBrowser selectedDate={selectedDate} onDateSelect={(d) => setSelectedDate(d)} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} />
 
               {/* Mini task preview for selected date */}
               <div className="mt-2">
@@ -396,7 +421,7 @@ export default function Dashboard() {
                 onAdd={addTemplate}
                 onUpdate={updateTemplate}
                 onDelete={deleteTemplate}
-                onApplyToday={applyTemplatesToToday}
+                onApplyToNext={applyTemplatesToNext}
                 applying={applying}
               />
             </div>
@@ -405,6 +430,7 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <NotificationManager todos={todos} selectedDate={selectedDate} />
       <InstallBanner />
     </>
   );
