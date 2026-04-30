@@ -62,6 +62,7 @@ export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<string | null>(() => toLocalDateStr(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>("tasks");
   const [weekOffDays, setWeekOffDays] = useState<string[]>([]);
+  const [dailyOrder, setDailyOrder] = useState<string[]>([]);
   const [mood, setMood] = useState<AppMood>("calm");
   const [moodStyle, setMoodStyle] = useState(MOOD_STYLES.calm);
   const moodRef = useRef<AppMood>("calm");
@@ -206,7 +207,24 @@ export default function Dashboard() {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
-  const dailyTodos = filtered.filter(t => t.task_type === "daily");
+  const dailyTodosRaw = filtered.filter(t => t.task_type === "daily").sort((a, b) => {
+    // Sort by time slot by default
+    if (!a.start_time && !b.start_time) return 0;
+    if (!a.start_time) return 1;
+    if (!b.start_time) return -1;
+    return a.start_time.localeCompare(b.start_time);
+  });
+  // Apply custom order if user has reordered
+  const dailyTodos = dailyOrder.length > 0
+    ? [...dailyTodosRaw].sort((a, b) => {
+        const ai = dailyOrder.indexOf(a.id);
+        const bi = dailyOrder.indexOf(b.id);
+        if (ai === -1 && bi === -1) return 0;
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      })
+    : dailyTodosRaw;
   const customTodos = filtered.filter(t => t.task_type !== "daily");
   const total = todos.length;
   const completed = todos.filter(t => t.completed).length;
@@ -345,7 +363,7 @@ export default function Dashboard() {
                         </span>
                         <div className="h-px flex-1" style={{ background: "var(--border)" }} />
                       </div>
-                      <div className="space-y-2">{dailyTodos.map(t => <TodoItem key={t.id} todo={t} onToggle={toggleTodo} onDelete={deleteTodo} onUpdate={updateTodo} />)}</div>
+                      <ReorderableTodoList todos={dailyTodos} onToggle={toggleTodo} onDelete={deleteTodo} onUpdate={updateTodo} onReorder={(reordered) => setDailyOrder(reordered.map(t => t.id))} />
                     </div>
                   )}
                   {customTodos.length > 0 && (
@@ -399,8 +417,11 @@ export default function Dashboard() {
               {/* Date Browser */}
               <DateBrowser selectedDate={selectedDate} onDateSelect={(d) => setSelectedDate(d)} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} />
 
+              {/* Consistency Calendar */}
+              <ConsistencyCalendar todos={todos} weekOffDays={weekOffDays} />
+
               {/* Mini task preview for selected date */}
-              <div className="mt-2">
+              <div className="mt-4">
                 <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
                   {filtered.length} task{filtered.length !== 1 ? "s" : ""} on this day — tap to view in Tasks tab
                 </p>
