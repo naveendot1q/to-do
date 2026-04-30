@@ -8,9 +8,10 @@ import AddTodo from "@/components/AddTodo";
 import TodoItem from "@/components/TodoItem";
 import DateBrowser from "@/components/DateBrowser";
 import DailyTemplates from "@/components/DailyTemplates";
-import InstallBanner from "@/components/InstallBanner";
+const InstallBanner = dynamic(() => import("@/components/InstallBanner"), { ssr: false });
 import { LogOut, Search, SlidersHorizontal, CheckCircle2, Clock, AlertTriangle, LayoutList, CalendarDays, RefreshCw } from "lucide-react";
-import NotificationManager from "@/components/NotificationManager";
+import dynamic from "next/dynamic";
+const NotificationManager = dynamic(() => import("@/components/NotificationManager"), { ssr: false });
 
 function toLocalDateStr(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
