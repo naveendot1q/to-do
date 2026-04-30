@@ -168,7 +168,16 @@ export default function Dashboard() {
     const toInsert = active.filter(t => !existing.includes(t.title.toLowerCase())).map(t => ({ title: t.title, description: t.description, priority: t.priority, start_time: t.start_time, end_time: t.end_time, category: t.category, due_date: nextDay, user_id: user.id, completed: false, task_type: "daily" }));
     if (toInsert.length > 0) {
       const { data } = await supabase.from("todos").insert(toInsert).select();
-      if (data) setTodos(p => [...data, ...p]);
+      if (data) {
+        setTodos(p => [...data, ...p]);
+        // Navigate to next day so user sees the tasks immediately
+        setSelectedDate(nextDay);
+        setActiveTab("tasks");
+      }
+    } else {
+      // Already applied — just navigate there
+      setSelectedDate(nextDay);
+      setActiveTab("tasks");
     }
     setApplying(false);
   }

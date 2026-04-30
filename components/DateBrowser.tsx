@@ -43,6 +43,11 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Keep week in sync when selectedDate changes externally
+  useEffect(() => {
+    if (selectedDate) setWeekStart(getMondayOf(selectedDate));
+  }, [selectedDate]);
+
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const monthsShown = Array.from(new Set(days.map(d => {
     const dt = new Date(d + "T00:00:00");
@@ -80,7 +85,6 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
               All
             </button>
           )}
-          {/* Week-off toggle */}
           {onToggleWeekOff && (
             <button
               onClick={() => setWeekOffMode(o => !o)}
@@ -121,7 +125,7 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
         <div className="mb-2 px-3 py-2 rounded-lg text-xs animate-fade-in flex items-center gap-2"
           style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", color: "#a78bfa" }}>
           <Coffee size={11} />
-          Tap any day to mark/unmark as week-off. Week-off days show in purple.
+          Tap any day to mark/unmark as week-off (shown in purple). Tasks still work normally on those days.
         </div>
       )}
 
@@ -137,53 +141,100 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
           const hasTasks = counts && counts.total > 0;
           const allDone = hasTasks && counts.completed === counts.total;
 
-          const dayBg = isSelected
-            ? isWeekOff ? "rgba(139,92,246,0.2)" : "rgba(232,197,71,0.12)"
-            : isWeekOff ? "rgba(139,92,246,0.08)"
-            : isToday ? "rgba(232,197,71,0.04)"
+          // Background: week-off gets purple tint, selected gets gold tint, today gets faint gold
+          const cellBg = isSelected
+            ? "rgba(232,197,71,0.12)"
+            : isWeekOff
+            ? "rgba(139,92,246,0.10)"  // subtle purple background only
+            : isToday
+            ? "rgba(232,197,71,0.04)"
             : "transparent";
 
-          const numColor = isSelected
-            ? isWeekOff ? "#c4b5fd" : "var(--obsidian)"
-            : isWeekOff ? "#a78bfa"
-            : isToday ? "var(--accent)"
-            : isPast ? "var(--border)"
+          // Day label color: week-off gets purple, others normal
+          const dayLabelColor = isWeekOff
+            ? "#a78bfa"
+            : isSelected || isToday
+            ? "var(--accent)"
+            : isPast
+            ? "var(--border)"
+            : "var(--muted)";
+
+          // Date number color: week-off selected = white on purple, week-off = purple, rest normal
+          const dateNumColor = isSelected
+            ? "var(--obsidian)"
+            : isWeekOff
+            ? "#c4b5fd"
+            : isToday
+            ? "var(--accent)"
+            : isPast
+            ? "var(--border)"
             : "var(--soft)";
 
-          const circleStyle = isSelected
-            ? { backgroundColor: isWeekOff ? "#8b5cf6" : "var(--accent)" }
-            : isToday ? { border: "1px solid rgba(232,197,71,0.4)", backgroundColor: "rgba(232,197,71,0.1)" }
-            : isWeekOff ? { border: "1px solid rgba(139,92,246,0.3)", backgroundColor: "rgba(139,92,246,0.1)" }
-            : {};
+          // Circle bg: selected = gold (or purple if week-off+selected), today = faint gold ring
+          const circleBg = isSelected
+            ? isWeekOff ? "#8b5cf6" : "var(--accent)"
+            : isToday
+            ? "rgba(232,197,71,0.1)"
+            : "transparent";
+
+          const circleBorder = isToday && !isSelected ? "1px solid rgba(232,197,71,0.4)" : "none";
 
           return (
-            <button key={dateStr} onClick={() => handleDayClick(dateStr)}
+            <button
+              key={dateStr}
+              onClick={() => handleDayClick(dateStr)}
               className="flex flex-col items-center py-3 px-1 transition-all relative"
-              style={{ background: dayBg, borderRight: i < 6 ? "1px solid var(--border)" : "none", cursor: "pointer" }}
+              style={{
+                background: cellBg,
+                borderRight: i < 6 ? "1px solid var(--border)" : "none",
+                cursor: "pointer",
+              }}
             >
-              {/* Week-off coffee icon */}
-              {isWeekOff && <Coffee size={8} style={{ position: "absolute", top: 4, right: 4, color: "#a78bfa", opacity: 0.7 }} />}
+              {/* Week-off indicator — tiny dot in corner, not covering content */}
+              {isWeekOff && (
+                <span style={{
+                  position: "absolute", top: 3, right: 3,
+                  width: 5, height: 5, borderRadius: "50%",
+                  background: "#8b5cf6", opacity: 0.8,
+                }} />
+              )}
 
-              <span className="text-xs mb-1.5 font-medium" style={{ color: isWeekOff ? "#a78bfa" : isSelected ? "var(--accent)" : isToday ? "var(--accent)" : isPast ? "var(--border)" : "var(--muted)", fontFamily: "'JetBrains Mono',monospace", fontSize: "0.65rem", letterSpacing: "0.05em" }}>
+              {/* Day name */}
+              <span className="text-xs mb-1.5 font-medium" style={{
+                color: dayLabelColor,
+                fontFamily: "'JetBrains Mono',monospace",
+                fontSize: "0.65rem",
+                letterSpacing: "0.05em",
+              }}>
                 {DAY_LABELS[dt.getDay()]}
               </span>
 
-              <span className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold transition-all" style={{ ...circleStyle, color: numColor }}>
+              {/* Date circle */}
+              <span className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold transition-all" style={{
+                background: circleBg,
+                border: circleBorder,
+                color: dateNumColor,
+              }}>
                 {dt.getDate()}
               </span>
 
+              {/* Task dots — always shown regardless of week-off */}
               <div className="mt-1.5 h-3 flex items-center justify-center gap-0.5">
-                {isWeekOff && !hasTasks ? (
-                  <span style={{ fontSize: "0.55rem", color: "#a78bfa" }}>off</span>
-                ) : hasTasks ? (
+                {hasTasks ? (
                   allDone ? (
                     <span style={{ color: "var(--success)", fontSize: "0.6rem" }}>✓</span>
                   ) : (
                     Array.from({ length: Math.min(counts.total - counts.completed, 3) }).map((_, j) => (
-                      <span key={j} className="rounded-full" style={{ width: 4, height: 4, background: isSelected ? (isWeekOff ? "#a78bfa" : "var(--accent)") : "var(--muted)" }} />
+                      <span key={j} className="rounded-full" style={{
+                        width: 4, height: 4,
+                        background: isSelected ? "var(--accent)" : isWeekOff ? "#a78bfa" : "var(--muted)",
+                        display: "block",
+                      }} />
                     ))
                   )
-                ) : <span style={{ width: 4, height: 4 }} />}
+                ) : (
+                  <span style={{ width: 4, height: 4, display: "block" }} />
+                )}
               </div>
             </button>
           );
@@ -194,7 +245,7 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
       {selectedDate && (
         <div className="mt-3 flex items-center gap-2 animate-fade-in">
           <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-          <span className="text-xs px-2 flex items-center gap-1" style={{ color: weekOffDays.includes(selectedDate) ? "#a78bfa" : "var(--muted)" }}>
+          <span className="text-xs px-2 flex items-center gap-1.5" style={{ color: weekOffDays.includes(selectedDate) ? "#a78bfa" : "var(--muted)" }}>
             {weekOffDays.includes(selectedDate) && <Coffee size={10} />}
             {selectedDate === today ? "Today"
               : selectedDate === addDays(today, 1) ? "Tomorrow"
