@@ -26,7 +26,7 @@ function formatTime(t: string) {
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
 }
 
-export default function DailyTemplates({ templates, onAdd, onUpdate, onDelete, onApplyToday, applying }: Props) {
+export default function DailyTemplates({ templates, onAdd, onUpdate, onDelete, onApplyToNext, applying }: Props) {
   const [open, setOpen] = useState(true);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
