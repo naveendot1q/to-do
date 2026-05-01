@@ -1,17 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Todo, DailyTemplate, FilterType, SortType, Priority, AppMood } from "@/lib/types";
+import { Todo, DailyTemplate, WeekOffTemplate, FilterType, SortType, Priority, AppMood } from "@/lib/types";
 import AddTodo from "@/components/AddTodo";
 import TodoItem from "@/components/TodoItem";
 import DateBrowser from "@/components/DateBrowser";
 import DailyTemplates from "@/components/DailyTemplates";
-const InstallBanner = dynamic(() => import("@/components/InstallBanner"), { ssr: false });
+import WeekOffTemplates from "@/components/WeekOffTemplates";
+import ReorderableTodoList from "@/components/ReorderableTodoList";
+import ConsistencyCalendar from "@/components/ConsistencyCalendar";
 import { LogOut, Search, SlidersHorizontal, CheckCircle2, Clock, AlertTriangle, LayoutList, CalendarDays, RefreshCw } from "lucide-react";
-import dynamic from "next/dynamic";
 const NotificationManager = dynamic(() => import("@/components/NotificationManager"), { ssr: false });
+const InstallBanner = dynamic(() => import("@/components/InstallBanner"), { ssr: false });
 
 function toLocalDateStr(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
@@ -52,8 +55,10 @@ type Tab = "tasks" | "calendar" | "daily";
 export default function Dashboard() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [templates, setTemplates] = useState<DailyTemplate[]>([]);
+  const [weekOffTemplates, setWeekOffTemplates] = useState<WeekOffTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
+  const [applyingWeekOff, setApplyingWeekOff] = useState(false);
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
@@ -77,7 +82,12 @@ export default function Dashboard() {
       if (aal?.nextLevel === "aal2" && aal?.currentLevel !== "aal2") { router.replace("/verify-totp"); return; }
       if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal1") { router.replace("/setup-totp"); return; }
       setUser({ id: session.user.id, email: session.user.email });
-      await Promise.all([fetchTodos(session.user.id), fetchTemplates(session.user.id), fetchWeekOff(session.user.id)]);
+      await Promise.all([
+        fetchTodos(session.user.id),
+        fetchTemplates(session.user.id),
+        fetchWeekOffTemplates(session.user.id),
+        fetchWeekOff(session.user.id),
+      ]);
     })();
     function onKey(e: KeyboardEvent) {
       if (e.key === "n" && !["INPUT","TEXTAREA"].includes((e.target as HTMLElement).tagName)) {
@@ -107,12 +117,14 @@ export default function Dashboard() {
     const { data } = await supabase.from("daily_templates").select("*").eq("user_id", uid).order("created_at");
     setTemplates(data || []);
   }
-
+  async function fetchWeekOffTemplates(uid: string) {
+    const { data } = await supabase.from("week_off_templates").select("*").eq("user_id", uid).order("created_at");
+    setWeekOffTemplates(data || []);
+  }
   async function fetchWeekOff(uid: string) {
     const { data } = await supabase.from("week_off_days").select("date").eq("user_id", uid);
     setWeekOffDays((data || []).map((r: any) => r.date));
   }
-
   async function toggleWeekOff(date: string) {
     if (!user) return;
     if (weekOffDays.includes(date)) {
@@ -141,6 +153,8 @@ export default function Dashboard() {
     await supabase.from("todos").update(updates).eq("id", id);
     setTodos(p => p.map(t => t.id === id ? { ...t, ...updates } : t));
   }
+
+  // Daily template CRUD
   async function addTemplate(t: Omit<DailyTemplate, "id"|"user_id"|"created_at">) {
     if (!user) return;
     const { data } = await supabase.from("daily_templates").insert({ ...t, user_id: user.id }).select().single();
@@ -154,10 +168,26 @@ export default function Dashboard() {
     await supabase.from("daily_templates").delete().eq("id", id);
     setTemplates(p => p.filter(t => t.id !== id));
   }
+
+  // Week-off template CRUD
+  async function addWeekOffTemplate(t: Omit<WeekOffTemplate, "id"|"user_id"|"created_at">) {
+    if (!user) return;
+    const { data } = await supabase.from("week_off_templates").insert({ ...t, user_id: user.id }).select().single();
+    if (data) setWeekOffTemplates(p => [...p, data]);
+  }
+  async function updateWeekOffTemplate(id: string, updates: Partial<WeekOffTemplate>) {
+    await supabase.from("week_off_templates").update(updates).eq("id", id);
+    setWeekOffTemplates(p => p.map(t => t.id === id ? { ...t, ...updates } : t));
+  }
+  async function deleteWeekOffTemplate(id: string) {
+    await supabase.from("week_off_templates").delete().eq("id", id);
+    setWeekOffTemplates(p => p.filter(t => t.id !== id));
+  }
+
   function getNextDay(dateStr: string) {
     const d = new Date(dateStr + "T00:00:00");
     d.setDate(d.getDate() + 1);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    return toLocalDateStr(d);
   }
 
   async function applyTemplatesToNext() {
@@ -166,22 +196,53 @@ export default function Dashboard() {
     const nextDay = getNextDay(selectedDate);
     const active = templates.filter(t => t.active);
     const existing = todos.filter(t => t.due_date === nextDay && t.task_type === "daily").map(t => t.title.toLowerCase());
-    const toInsert = active.filter(t => !existing.includes(t.title.toLowerCase())).map(t => ({ title: t.title, description: t.description, priority: t.priority, start_time: t.start_time, end_time: t.end_time, category: t.category, due_date: nextDay, user_id: user.id, completed: false, task_type: "daily" }));
+    const toInsert = active.filter(t => !existing.includes(t.title.toLowerCase())).map(t => ({
+      title: t.title, description: t.description, priority: t.priority,
+      start_time: t.start_time, end_time: t.end_time, category: t.category,
+      due_date: nextDay, user_id: user.id, completed: false, task_type: "daily",
+    }));
     if (toInsert.length > 0) {
       const { data } = await supabase.from("todos").insert(toInsert).select();
-      if (data) {
-        setTodos(p => [...data, ...p]);
-        // Navigate to next day so user sees the tasks immediately
-        setSelectedDate(nextDay);
-        setActiveTab("tasks");
-      }
-    } else {
-      // Already applied — just navigate there
-      setSelectedDate(nextDay);
-      setActiveTab("tasks");
+      if (data) { setTodos(p => [...data, ...p]); }
     }
+    setSelectedDate(nextDay);
+    setActiveTab("tasks");
     setApplying(false);
   }
+
+  async function applyWeekOffTemplatesToNext(): Promise<{ applied: boolean; date?: string; message: string }> {
+    if (!user) return { applied: false, message: "Not logged in" };
+    setApplyingWeekOff(true);
+
+    // Find next upcoming week-off day
+    const today = new Date(); today.setHours(0,0,0,0);
+    const future = weekOffDays.filter(d => new Date(d + "T00:00:00") >= today).sort();
+    if (future.length === 0) {
+      setApplyingWeekOff(false);
+      return { applied: false, message: "No upcoming week-off set. Go to Calendar → tap Week-off to mark a day." };
+    }
+
+    const targetDate = future[0];
+    const active = weekOffTemplates.filter(t => t.active);
+    const existing = todos.filter(t => t.due_date === targetDate && t.task_type === "daily").map(t => t.title.toLowerCase());
+    const toInsert = active.filter(t => !existing.includes(t.title.toLowerCase())).map(t => ({
+      title: t.title, description: t.description, priority: t.priority,
+      start_time: t.start_time, end_time: t.end_time, category: t.category,
+      due_date: targetDate, user_id: user.id, completed: false, task_type: "daily",
+    }));
+
+    if (toInsert.length > 0) {
+      const { data } = await supabase.from("todos").insert(toInsert).select();
+      if (data) { setTodos(p => [...data, ...p]); }
+    }
+
+    setSelectedDate(targetDate);
+    setActiveTab("tasks");
+    setApplyingWeekOff(false);
+    const dateLabel = new Date(targetDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return { applied: true, date: targetDate, message: `Added ${toInsert.length} tasks to ${dateLabel} ✓` };
+  }
+
   async function handleLogout() { await supabase.auth.signOut(); router.push("/login"); }
 
   const todayStr = toLocalDateStr(new Date());
@@ -207,41 +268,40 @@ export default function Dashboard() {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
+  // Daily todos sorted by time slot, with optional custom order
   const dailyTodosRaw = filtered.filter(t => t.task_type === "daily").sort((a, b) => {
-    // Sort by time slot by default
     if (!a.start_time && !b.start_time) return 0;
     if (!a.start_time) return 1;
     if (!b.start_time) return -1;
     return a.start_time.localeCompare(b.start_time);
   });
-  // Apply custom order if user has reordered
   const dailyTodos = dailyOrder.length > 0
     ? [...dailyTodosRaw].sort((a, b) => {
-        const ai = dailyOrder.indexOf(a.id);
-        const bi = dailyOrder.indexOf(b.id);
+        const ai = dailyOrder.indexOf(a.id); const bi = dailyOrder.indexOf(b.id);
         if (ai === -1 && bi === -1) return 0;
-        if (ai === -1) return 1;
-        if (bi === -1) return -1;
+        if (ai === -1) return 1; if (bi === -1) return -1;
         return ai - bi;
       })
     : dailyTodosRaw;
   const customTodos = filtered.filter(t => t.task_type !== "daily");
-  const total = todos.length;
-  const completed = todos.filter(t => t.completed).length;
-  const pending = todos.filter(t => !t.completed).length;
+
+  // Stats scoped to selected date
+  const viewDate = selectedDate || todayStr;
+  const viewTasks = todos.filter(t => t.due_date === viewDate);
+  const total = viewTasks.length;
+  const completed = viewTasks.filter(t => t.completed).length;
+  const pending = viewTasks.filter(t => !t.completed).length;
   const overdue = todos.filter(t => !t.completed && t.due_date && t.due_date < todayStr).length;
-  const todayTasks = todos.filter(t => t.due_date === todayStr);
-  const todayDone = todayTasks.filter(t => t.completed).length;
-  const isViewingToday = selectedDate === todayStr;
+  const isViewingToday = selectedDate === todayStr || !selectedDate;
   const progress = total > 0 ? Math.round(completed / total * 100) : 0;
-  const todayProgress = todayTasks.length > 0 ? Math.round(todayDone / todayTasks.length * 100) : 0;
+
   const moodBanner = { calm: null, success: { text: "✨ All tasks complete!", color: "var(--success)", bg: "rgba(46,213,115,0.08)", border: "rgba(46,213,115,0.2)" }, warning: { text: "⏳ Tasks in progress — stay focused", color: "var(--warning)", bg: "rgba(255,165,2,0.08)", border: "rgba(255,165,2,0.2)" }, critical: { text: "🚨 Overdue tasks need attention!", color: "var(--danger)", bg: "rgba(255,71,87,0.08)", border: "rgba(255,71,87,0.2)" } }[mood];
   const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { key: "tasks", label: "Tasks", icon: <LayoutList size={15} />, badge: pending > 0 ? pending : undefined },
     { key: "calendar", label: "Calendar", icon: <CalendarDays size={15} /> },
-    { key: "daily", label: "Daily", icon: <RefreshCw size={15} />, badge: templates.filter(t => t.active).length || undefined },
+    { key: "daily", label: "Daily", icon: <RefreshCw size={15} />, badge: (templates.filter(t => t.active).length + weekOffTemplates.filter(t => t.active).length) || undefined },
   ];
 
   return (
@@ -256,16 +316,17 @@ export default function Dashboard() {
       <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
         <div className="max-w-2xl mx-auto px-4">
 
-          {/* ── TOP HEADER ── */}
+          {/* Header */}
           <div className="pt-6 pb-4 flex items-center justify-between">
             <div>
-              <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>✦ PERSONAL WORKSPACE</p>
+              <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+              </p>
               <h1 className="text-2xl font-bold mt-0.5" style={{ fontFamily: "'Playfair Display',serif", color: "#fff" }}>{greeting()}</h1>
             </div>
             <button onClick={handleLogout} className="btn-ghost flex items-center gap-2 text-sm"><LogOut size={14} /> Sign out</button>
           </div>
 
-          {/* Mood Banner */}
           {moodBanner && (
             <div className="rounded-xl px-4 py-2 mb-3 text-sm font-medium animate-fade-in"
               style={{ background: moodBanner.bg, border: `1px solid ${moodBanner.border}`, color: moodBanner.color }}>
@@ -273,24 +334,17 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── TAB BAR — pinned at top ── */}
+          {/* Tab Bar */}
           <div className="sticky top-0 pt-1 pb-3" style={{ zIndex: 50, backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", background: "rgba(10,10,15,0.75)" }}>
             <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(26,26,36,0.9)", border: "1px solid var(--border)" }}>
               {tabs.map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all relative"
-                  style={{
-                    background: activeTab === tab.key ? "var(--accent)" : "transparent",
-                    color: activeTab === tab.key ? "var(--obsidian)" : "var(--muted)",
-                  }}
-                >
-                  {tab.icon}
-                  {tab.label}
+                  style={{ background: activeTab === tab.key ? "var(--accent)" : "transparent", color: activeTab === tab.key ? "var(--obsidian)" : "var(--muted)" }}>
+                  {tab.icon}{tab.label}
                   {tab.badge !== undefined && (
-                    <span className="absolute top-1.5 right-2 text-xs w-4 h-4 rounded-full flex items-center justify-center"
-                      style={{ background: activeTab === tab.key ? "rgba(10,10,15,0.3)" : "var(--accent)", color: activeTab === tab.key ? "var(--obsidian)" : "var(--obsidian)", fontSize: "10px", fontWeight: 700 }}>
+                    <span className="absolute top-1.5 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                      style={{ background: activeTab === tab.key ? "rgba(10,10,15,0.3)" : "var(--accent)", color: "var(--obsidian)", fontSize: "10px", fontWeight: 700 }}>
                       {tab.badge}
                     </span>
                   )}
@@ -302,14 +356,12 @@ export default function Dashboard() {
           {/* ── TASKS TAB ── */}
           {activeTab === "tasks" && (
             <div className="pb-20 animate-fade-in">
-              {/* Search + Filters */}
               <div className="mb-4 space-y-2">
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
                     <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                      className="input-field text-sm" style={{ paddingLeft: "2.25rem", paddingTop: "0.6rem", paddingBottom: "0.6rem" }}
-                      placeholder="Search tasks..." />
+                      className="input-field text-sm" style={{ paddingLeft: "2.25rem", paddingTop: "0.6rem", paddingBottom: "0.6rem" }} placeholder="Search tasks..." />
                   </div>
                   <button onClick={() => setShowFilters(o => !o)} className="btn-ghost flex items-center gap-1.5"
                     style={{ borderColor: showFilters ? "var(--accent)" : undefined, color: showFilters ? "var(--accent)" : undefined }}>
@@ -336,21 +388,15 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Add Todo */}
               <div className="mb-4"><AddTodo onAdd={addTodo} selectedDate={selectedDate} /></div>
 
-              {/* Task Lists */}
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => <div key={i} className="shimmer rounded-xl h-16 mb-2" />)
               ) : filtered.length === 0 ? (
                 <div className="text-center py-16 rounded-xl" style={{ background: "rgba(26,26,36,0.8)", border: "1px solid var(--border)" }}>
                   <p style={{ fontSize: "2.5rem" }}>📝</p>
-                  <p className="mt-3 font-medium" style={{ color: "var(--soft)" }}>
-                    {search ? "No tasks match your search" : "No tasks for this day"}
-                  </p>
-                  <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-                    {!search && "Press N to add, or go to Daily tab"}
-                  </p>
+                  <p className="mt-3 font-medium" style={{ color: "var(--soft)" }}>{search ? "No tasks match your search" : "No tasks for this day"}</p>
+                  <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>{!search && "Press N to add, or go to Daily tab"}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -389,7 +435,6 @@ export default function Dashboard() {
           {/* ── CALENDAR TAB ── */}
           {activeTab === "calendar" && (
             <div className="pb-20 animate-fade-in">
-              {/* Stats */}
               <div className="grid grid-cols-4 gap-3 mb-6">
                 {[
                   { icon: LayoutList, label: "Total", value: total, color: "var(--soft)" },
@@ -405,26 +450,19 @@ export default function Dashboard() {
                 ))}
               </div>
 
-              {/* Progress */}
               <div className="mb-6">
                 <div className="flex justify-between text-xs mb-1.5" style={{ color: "var(--muted)" }}>
-                  <span>{isViewingToday ? `Today · ${todayDone}/${todayTasks.length} tasks` : "Overall progress"}</span>
-                  <span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono',monospace" }}>{isViewingToday ? todayProgress : progress}%</span>
+                  <span>{isViewingToday ? `Today · ${completed}/${total} tasks` : `${new Date(viewDate+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})} · ${completed}/${total}`}</span>
+                  <span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono',monospace" }}>{progress}%</span>
                 </div>
-                <div className="progress-bar"><div className="progress-fill" style={{ width: `${isViewingToday ? todayProgress : progress}%` }} /></div>
+                <div className="progress-bar"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
               </div>
 
-              {/* Date Browser */}
-              <DateBrowser selectedDate={selectedDate} onDateSelect={(d) => setSelectedDate(d)} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} />
-
-              {/* Consistency Calendar */}
+              <DateBrowser selectedDate={selectedDate} onDateSelect={setSelectedDate} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} />
               <ConsistencyCalendar todos={todos} weekOffDays={weekOffDays} />
 
-              {/* Mini task preview for selected date */}
               <div className="mt-4">
-                <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
-                  {filtered.length} task{filtered.length !== 1 ? "s" : ""} on this day — tap to view in Tasks tab
-                </p>
+                <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>{filtered.length} task{filtered.length !== 1 ? "s" : ""} on {selectedDate === todayStr ? "today" : "this day"}</p>
                 {filtered.slice(0, 3).map(t => (
                   <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg mb-2" style={{ background: "rgba(26,26,36,0.7)", border: "1px solid var(--border)" }}>
                     <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: t.completed ? "var(--success)" : t.priority === "high" ? "var(--danger)" : t.priority === "medium" ? "var(--warning)" : "var(--success)" }} />
@@ -441,20 +479,14 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── DAILY TEMPLATES TAB ── */}
+          {/* ── DAILY TAB ── */}
           {activeTab === "daily" && (
             <div className="pb-20 animate-fade-in">
               <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-                Set up recurring tasks once. Use <strong style={{ color: "var(--accent)" }}>Add to Today</strong> to add them to the selected date.
+                Set recurring tasks once. <strong style={{ color: "var(--accent)" }}>Daily tasks</strong> add to the next day. <strong style={{ color: "#a78bfa" }}>Week-off tasks</strong> add to your next marked week-off day.
               </p>
-              <DailyTemplates
-                templates={templates}
-                onAdd={addTemplate}
-                onUpdate={updateTemplate}
-                onDelete={deleteTemplate}
-                onApplyToNext={applyTemplatesToNext}
-                applying={applying}
-              />
+              <DailyTemplates templates={templates} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} onApplyToNext={applyTemplatesToNext} applying={applying} />
+              <WeekOffTemplates templates={weekOffTemplates} weekOffDays={weekOffDays} onAdd={addWeekOffTemplate} onUpdate={updateWeekOffTemplate} onDelete={deleteWeekOffTemplate} onApplyToNextWeekOff={applyWeekOffTemplatesToNext} applying={applyingWeekOff} />
             </div>
           )}
 

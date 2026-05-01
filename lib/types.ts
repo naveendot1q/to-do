@@ -39,3 +39,29 @@ export interface WeekOffDay {
   date: string;
   created_at: string;
 }
+
+export interface WeekOffTemplate {
+  id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  priority: Priority;
+  start_time?: string;
+  end_time?: string;
+  category?: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface WeekOffTemplate {
+  id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  priority: Priority;
+  start_time?: string;
+  end_time?: string;
+  category?: string;
+  active: boolean;
+  created_at: string;
+}

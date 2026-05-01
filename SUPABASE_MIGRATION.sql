@@ -41,3 +41,39 @@ ALTER TABLE week_off_days ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can only access their own week off days" ON week_off_days;
 CREATE POLICY "Users can only access their own week off days"
   ON week_off_days FOR ALL USING (auth.uid() = user_id);
+
+-- 6. Week-off task templates table
+CREATE TABLE IF NOT EXISTS week_off_templates (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  description text,
+  priority text DEFAULT 'medium',
+  start_time text,
+  end_time text,
+  category text,
+  active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE week_off_templates ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can only access their own week off templates" ON week_off_templates;
+CREATE POLICY "Users can only access their own week off templates"
+  ON week_off_templates FOR ALL USING (auth.uid() = user_id);
+
+-- 6. Week-off task templates
+CREATE TABLE IF NOT EXISTS week_off_templates (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  description text,
+  priority text DEFAULT 'medium',
+  start_time text,
+  end_time text,
+  category text,
+  active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE week_off_templates ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can only access their own week off templates" ON week_off_templates;
+CREATE POLICY "Users can only access their own week off templates"
+  ON week_off_templates FOR ALL USING (auth.uid() = user_id);
