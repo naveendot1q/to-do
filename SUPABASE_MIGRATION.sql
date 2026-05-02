@@ -77,3 +77,19 @@ ALTER TABLE week_off_templates ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can only access their own week off templates" ON week_off_templates;
 CREATE POLICY "Users can only access their own week off templates"
   ON week_off_templates FOR ALL USING (auth.uid() = user_id);
+
+-- 7. Notes table
+CREATE TABLE IF NOT EXISTS notes (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  title text NOT NULL DEFAULT 'Untitled',
+  content text DEFAULT '',
+  color text DEFAULT 'default',
+  pinned boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can only access their own notes" ON notes;
+CREATE POLICY "Users can only access their own notes"
+  ON notes FOR ALL USING (auth.uid() = user_id);

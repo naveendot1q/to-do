@@ -9,6 +9,7 @@ interface DateBrowserProps {
   taskCountsByDate: Record<string, { total: number; completed: number }>;
   weekOffDays?: string[];
   onToggleWeekOff?: (date: string) => void;
+  weekOffDaysDisplay?: { date: string; allDone: boolean }[];
 }
 
 function toLocalDateStr(date: Date) {
@@ -28,7 +29,7 @@ function getMondayOf(dateStr: string): string {
 const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDate, weekOffDays = [], onToggleWeekOff }: DateBrowserProps) {
+export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDate, weekOffDays = [], onToggleWeekOff, weekOffDaysDisplay = [] }: DateBrowserProps) {
   const today = toLocalDateStr(new Date());
   const [weekStart, setWeekStart] = useState(() => getMondayOf(selectedDate || today));
   const [showPicker, setShowPicker] = useState(false);
@@ -141,17 +142,23 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
           const hasTasks = counts && counts.total > 0;
           const allDone = hasTasks && counts.completed === counts.total;
 
-          // Background: week-off gets purple tint, selected gets gold tint, today gets faint gold
+          // Background: week-off gets green if all done, purple if not
+          const weekOffInfo = weekOffDaysDisplay.find(w => w.date === dateStr);
+          const weekOffAllDone = weekOffInfo?.allDone ?? false;
           const cellBg = isSelected
             ? "rgba(232,197,71,0.12)"
+            : isWeekOff && weekOffAllDone
+            ? "rgba(46,213,115,0.10)"   // green when all tasks done
             : isWeekOff
-            ? "rgba(139,92,246,0.10)"  // subtle purple background only
+            ? "rgba(139,92,246,0.10)"   // purple when pending
             : isToday
             ? "rgba(232,197,71,0.04)"
             : "transparent";
 
-          // Day label color: week-off gets purple, others normal
-          const dayLabelColor = isWeekOff
+          // Day label color: week-off green if done, purple if not
+          const dayLabelColor = isWeekOff && weekOffAllDone
+            ? "#2ed573"
+            : isWeekOff
             ? "#a78bfa"
             : isSelected || isToday
             ? "var(--accent)"
@@ -159,9 +166,11 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
             ? "var(--border)"
             : "var(--muted)";
 
-          // Date number color: week-off selected = white on purple, week-off = purple, rest normal
+          // Date number color
           const dateNumColor = isSelected
             ? "var(--obsidian)"
+            : isWeekOff && weekOffAllDone
+            ? "#2ed573"
             : isWeekOff
             ? "#c4b5fd"
             : isToday
@@ -172,7 +181,7 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
 
           // Circle bg: selected = gold (or purple if week-off+selected), today = faint gold ring
           const circleBg = isSelected
-            ? isWeekOff ? "#8b5cf6" : "var(--accent)"
+            ? (isWeekOff && weekOffAllDone ? "#2ed573" : isWeekOff ? "#8b5cf6" : "var(--accent)")
             : isToday
             ? "rgba(232,197,71,0.1)"
             : "transparent";
@@ -195,7 +204,7 @@ export default function DateBrowser({ selectedDate, onDateSelect, taskCountsByDa
                 <span style={{
                   position: "absolute", top: 3, right: 3,
                   width: 5, height: 5, borderRadius: "50%",
-                  background: "#8b5cf6", opacity: 0.8,
+                  background: weekOffAllDone ? "#2ed573" : "#8b5cf6", opacity: 0.8,
                 }} />
               )}
 
