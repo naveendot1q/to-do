@@ -76,3 +76,18 @@ export interface Note {
   created_at: string;
   updated_at: string;
 }
+
+export type MealType = 'pre_breakfast' | 'breakfast' | 'lunch' | 'evening_snack';
+
+export interface Meal {
+  id: string;
+  user_id: string;
+  date: string;
+  meal_type: MealType;
+  name: string;
+  description?: string;
+  time?: string;
+  calories?: number;
+  completed: boolean;
+  created_at: string;
+}

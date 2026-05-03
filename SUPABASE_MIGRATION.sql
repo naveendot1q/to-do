@@ -93,3 +93,21 @@ ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can only access their own notes" ON notes;
 CREATE POLICY "Users can only access their own notes"
   ON notes FOR ALL USING (auth.uid() = user_id);
+
+-- 8. Meals table
+CREATE TABLE IF NOT EXISTS meals (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  date text NOT NULL,
+  meal_type text NOT NULL, -- 'pre_breakfast' | 'breakfast' | 'lunch' | 'evening_snack'
+  name text NOT NULL,
+  description text,
+  time text, -- "HH:MM"
+  calories integer,
+  completed boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now()
+);
+ALTER TABLE meals ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can only access their own meals" ON meals;
+CREATE POLICY "Users can only access their own meals"
+  ON meals FOR ALL USING (auth.uid() = user_id);

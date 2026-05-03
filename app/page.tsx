@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Todo, DailyTemplate, WeekOffTemplate, Note, FilterType, SortType, Priority, AppMood } from "@/lib/types";
+import { Todo, DailyTemplate, WeekOffTemplate, Note, Meal, FilterType, SortType, Priority, AppMood } from "@/lib/types";
 import AddTodo from "@/components/AddTodo";
 import TodoItem from "@/components/TodoItem";
 import DateBrowser from "@/components/DateBrowser";
@@ -13,7 +13,8 @@ import WeekOffTemplates from "@/components/WeekOffTemplates";
 import ReorderableTodoList from "@/components/ReorderableTodoList";
 import ConsistencyCalendar from "@/components/ConsistencyCalendar";
 import Notes from "@/components/Notes";
-import { LogOut, Search, SlidersHorizontal, CheckCircle2, Clock, AlertTriangle, LayoutList, CalendarDays, RefreshCw, StickyNote } from "lucide-react";
+import Meals from "@/components/Meals";
+import { LogOut, Search, SlidersHorizontal, CheckCircle2, Clock, AlertTriangle, LayoutList, CalendarDays, RefreshCw, StickyNote, UtensilsCrossed } from "lucide-react";
 const NotificationManager = dynamic(() => import("@/components/NotificationManager"), { ssr: false });
 const InstallBanner = dynamic(() => import("@/components/InstallBanner"), { ssr: false });
 
@@ -34,7 +35,8 @@ function computeMood(todos: Todo[], selectedDate: string | null): AppMood {
     return nowMins > eh * 60 + em;
   });
   if (hasTimeOverdue) return "critical";
-  if (todos.some(t => !t.completed && t.due_date && t.due_date < todayStr)) return "critical";
+  // Only critical for tasks overdue TODAY (past their end_time), not past days
+  // Past days are just history — don't alarm the user
   const hasActive = relevant.some(t => {
     if (t.completed || !t.start_time || !t.end_time || t.due_date !== todayStr) return false;
     const [sh, sm] = t.start_time.split(":").map(Number);
@@ -51,13 +53,14 @@ const MOOD_STYLES: Record<AppMood, { bg: string; grid: string }> = {
   critical: { bg: "radial-gradient(ellipse at 50% 30%, rgba(255,71,87,0.13) 0%, transparent 55%), radial-gradient(ellipse at 20% 80%, rgba(255,71,87,0.07) 0%, transparent 50%)", grid: "rgba(255,71,87,0.03)" },
 };
 
-type Tab = "tasks" | "notes" | "calendar" | "daily";
+type Tab = "tasks" | "meals" | "notes" | "calendar" | "daily";
 
 export default function Dashboard() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [templates, setTemplates] = useState<DailyTemplate[]>([]);
   const [weekOffTemplates, setWeekOffTemplates] = useState<WeekOffTemplate[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [meals, setMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [applyingWeekOff, setApplyingWeekOff] = useState(false);
@@ -87,7 +90,7 @@ export default function Dashboard() {
       await Promise.all([
         fetchTodos(session.user.id), fetchTemplates(session.user.id),
         fetchWeekOffTemplates(session.user.id), fetchWeekOff(session.user.id),
-        fetchNotes(session.user.id),
+        fetchNotes(session.user.id), fetchMeals(session.user.id),
       ]);
     })();
     function onKey(e: KeyboardEvent) {
@@ -129,6 +132,10 @@ export default function Dashboard() {
     const { data } = await supabase.from("notes").select("*").eq("user_id", uid).order("updated_at", { ascending: false });
     setNotes(data || []);
   }
+  async function fetchMeals(uid: string) {
+    const { data } = await supabase.from("meals").select("*").eq("user_id", uid).order("created_at", { ascending: false });
+    setMeals(data || []);
+  }
 
   async function toggleWeekOff(date: string) {
     if (!user) return;
@@ -141,6 +148,7 @@ export default function Dashboard() {
     }
   }
 
+  // Todos
   async function addTodo(todo: { title: string; description?: string; priority: Priority; due_date?: string; start_time?: string; end_time?: string; category?: string }) {
     if (!user) return;
     const { data } = await supabase.from("todos").insert({ ...todo, due_date: todo.due_date || selectedDate || undefined, user_id: user.id, completed: false, task_type: "custom" }).select().single();
@@ -159,6 +167,7 @@ export default function Dashboard() {
     setTodos(p => p.map(t => t.id === id ? { ...t, ...updates } : t));
   }
 
+  // Templates
   async function addTemplate(t: Omit<DailyTemplate, "id"|"user_id"|"created_at">) {
     if (!user) return;
     const { data } = await supabase.from("daily_templates").insert({ ...t, user_id: user.id }).select().single();
@@ -173,6 +182,7 @@ export default function Dashboard() {
     setTemplates(p => p.filter(t => t.id !== id));
   }
 
+  // Week-off templates
   async function addWeekOffTemplate(t: Omit<WeekOffTemplate, "id"|"user_id"|"created_at">) {
     if (!user) return;
     const { data } = await supabase.from("week_off_templates").insert({ ...t, user_id: user.id }).select().single();
@@ -187,6 +197,7 @@ export default function Dashboard() {
     setWeekOffTemplates(p => p.filter(t => t.id !== id));
   }
 
+  // Notes
   async function addNote(note: { title: string; content: string; color: string; pinned: boolean }) {
     if (!user) return;
     const { data } = await supabase.from("notes").insert({ ...note, user_id: user.id }).select().single();
@@ -202,15 +213,27 @@ export default function Dashboard() {
     setNotes(p => p.filter(n => n.id !== id));
   }
 
-  function toLocalStr(d: Date) {
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  // Meals
+  async function addMeal(meal: Omit<Meal, "id"|"user_id"|"created_at">) {
+    if (!user) return;
+    const { data } = await supabase.from("meals").insert({ ...meal, user_id: user.id }).select().single();
+    if (data) setMeals(p => [data, ...p]);
+  }
+  async function updateMeal(id: string, updates: Partial<Meal>) {
+    await supabase.from("meals").update(updates).eq("id", id);
+    setMeals(p => p.map(m => m.id === id ? { ...m, ...updates } : m));
+  }
+  async function deleteMeal(id: string) {
+    await supabase.from("meals").delete().eq("id", id);
+    setMeals(p => p.filter(m => m.id !== id));
   }
 
+  // Apply templates
   async function applyTemplatesToNext() {
     if (!user || !selectedDate) return;
     setApplying(true);
     const next = new Date(selectedDate + "T00:00:00"); next.setDate(next.getDate()+1);
-    const nextDay = toLocalStr(next);
+    const nextDay = toLocalDateStr(next);
     const active = templates.filter(t => t.active);
     const existing = todos.filter(t => t.due_date === nextDay && t.task_type === "daily").map(t => t.title.toLowerCase());
     const toInsert = active.filter(t => !existing.includes(t.title.toLowerCase())).map(t => ({ title: t.title, description: t.description, priority: t.priority, start_time: t.start_time, end_time: t.end_time, category: t.category, due_date: nextDay, user_id: user.id, completed: false, task_type: "daily" }));
@@ -237,8 +260,6 @@ export default function Dashboard() {
   async function handleLogout() { await supabase.auth.signOut(); router.push("/login"); }
 
   const todayStr = toLocalDateStr(new Date());
-
-  // Task counts per date — week-off green if ALL (incl. completed) tasks done
   const taskCountsByDate: Record<string, { total: number; completed: number }> = {};
   todos.forEach(t => {
     if (!t.due_date) return;
@@ -247,11 +268,9 @@ export default function Dashboard() {
     if (t.completed) taskCountsByDate[t.due_date].completed++;
   });
 
-  // Week-off days that are fully complete should show green in calendar
   const weekOffDaysDisplay = weekOffDays.map(d => {
     const c = taskCountsByDate[d];
-    if (c && c.total > 0 && c.completed === c.total) return { date: d, allDone: true };
-    return { date: d, allDone: false };
+    return { date: d, allDone: !!(c && c.total > 0 && c.completed === c.total) };
   });
 
   const filtered = todos.filter(t => {
@@ -259,10 +278,14 @@ export default function Dashboard() {
     if (search && !t.title.toLowerCase().includes(search.toLowerCase()) && !t.description?.toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === "active") return !t.completed;
     if (filter === "completed") return t.completed;
-    if (filter === "overdue") return !t.completed && t.due_date && t.due_date < todayStr;
+    if (filter === "overdue") {
+      if (t.completed || t.due_date !== todayStr || !t.end_time) return false;
+      const [eh, em] = t.end_time.split(":").map(Number);
+      const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+      return nowMins > eh * 60 + em;
+    }
     return true;
   }).sort((a, b) => {
-    // Completed always go to bottom
     if (a.completed && !b.completed) return 1;
     if (!a.completed && b.completed) return -1;
     if (sort === "priority") { const o = { high:0, medium:1, low:2 }; return o[a.priority] - o[b.priority]; }
@@ -295,18 +318,32 @@ export default function Dashboard() {
   const total = viewTasks.length;
   const completed = viewTasks.filter(t => t.completed).length;
   const pending = viewTasks.filter(t => !t.completed).length;
-  const overdue = todos.filter(t => !t.completed && t.due_date && t.due_date < todayStr).length;
+  // Overdue = today's tasks that have passed their end_time (not past days)
+  const overdue = todos.filter(t => {
+    if (t.completed || t.due_date !== todayStr || !t.end_time) return false;
+    const [eh, em] = t.end_time.split(":").map(Number);
+    const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+    return nowMins > eh * 60 + em;
+  }).length;
   const isViewingToday = selectedDate === todayStr || !selectedDate;
   const progress = total > 0 ? Math.round(completed / total * 100) : 0;
+
+  const todayMeals = meals.filter(m => m.date === viewDate);
+  const totalCals = todayMeals.reduce((s, m) => s + (m.calories || 0), 0);
 
   const moodBanner = { calm: null, success: { text: "✨ All tasks complete!", color: "var(--success)", bg: "rgba(46,213,115,0.08)", border: "rgba(46,213,115,0.2)" }, warning: { text: "⏳ Tasks in progress — stay focused", color: "var(--warning)", bg: "rgba(255,165,2,0.08)", border: "rgba(255,165,2,0.2)" }, critical: { text: "🚨 Overdue tasks need attention!", color: "var(--danger)", bg: "rgba(255,71,87,0.08)", border: "rgba(255,71,87,0.2)" } }[mood];
   const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 
-  const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
-    { key: "tasks",    label: "Tasks",    icon: <LayoutList size={14} />,   badge: pending > 0 ? pending : undefined },
-    { key: "notes",    label: "Notes",    icon: <StickyNote size={14} />,   badge: notes.filter(n => n.pinned).length || undefined },
-    { key: "calendar", label: "Calendar", icon: <CalendarDays size={14} /> },
-    { key: "daily",    label: "Daily",    icon: <RefreshCw size={14} />,    badge: (templates.filter(t=>t.active).length + weekOffTemplates.filter(t=>t.active).length) || undefined },
+  // Tab row 1: Tasks, Meals (primary)
+  // Tab row 2: Notes, Calendar, Daily (secondary)
+  const primaryTabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { key: "tasks", label: "Tasks",  icon: <LayoutList size={14} />,       badge: pending > 0 ? pending : undefined },
+    { key: "meals", label: "Meals",  icon: <UtensilsCrossed size={14} />,   badge: totalCals > 0 ? undefined : undefined },
+  ];
+  const secondaryTabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { key: "notes",    label: "Notes",    icon: <StickyNote size={13} />,   badge: notes.filter(n=>n.pinned).length || undefined },
+    { key: "calendar", label: "Calendar", icon: <CalendarDays size={13} /> },
+    { key: "daily",    label: "Daily",    icon: <RefreshCw size={13} />,    badge: (templates.filter(t=>t.active).length + weekOffTemplates.filter(t=>t.active).length) || undefined },
   ];
 
   return (
@@ -319,8 +356,8 @@ export default function Dashboard() {
       <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
         <div className="max-w-2xl mx-auto px-4">
 
-          {/* ── STICKY TOP BLOCK: header + mood + tabs ── */}
-          <div className="sticky top-0 pt-4 pb-2" style={{ zIndex: 50, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", background: "rgba(10,10,15,0.85)" }}>
+          {/* ── STICKY TOP BLOCK ── */}
+          <div className="sticky top-0 pt-4 pb-2" style={{ zIndex: 50, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", background: "rgba(10,10,15,0.88)" }}>
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
               <div>
@@ -332,7 +369,6 @@ export default function Dashboard() {
               <button onClick={handleLogout} className="btn-ghost flex items-center gap-1.5 text-xs"><LogOut size={13} /> Sign out</button>
             </div>
 
-            {/* Mood Banner */}
             {moodBanner && (
               <div className="rounded-lg px-3 py-1.5 mb-2 text-xs font-medium animate-fade-in"
                 style={{ background: moodBanner.bg, border: `1px solid ${moodBanner.border}`, color: moodBanner.color }}>
@@ -340,16 +376,33 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Tab Bar */}
-            <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(26,26,36,0.95)", border: "1px solid var(--border)" }}>
-              {tabs.map(tab => (
+            {/* Primary tabs: Tasks + Meals */}
+            <div className="flex gap-1 p-1 rounded-xl mb-1" style={{ background: "rgba(26,26,36,0.95)", border: "1px solid var(--border)" }}>
+              {primaryTabs.map(tab => (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all relative"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-semibold transition-all relative"
                   style={{ background: activeTab === tab.key ? "var(--accent)" : "transparent", color: activeTab === tab.key ? "var(--obsidian)" : "var(--muted)" }}>
                   {tab.icon}{tab.label}
                   {tab.badge !== undefined && (
-                    <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center"
-                      style={{ background: activeTab === tab.key ? "rgba(10,10,15,0.4)" : "var(--accent)", color: "var(--obsidian)", fontSize: "9px", fontWeight: 700 }}>
+                    <span className="absolute top-1 right-1.5 w-4 h-4 rounded-full flex items-center justify-center"
+                      style={{ background: activeTab===tab.key ? "rgba(10,10,15,0.35)" : "var(--accent)", color:"var(--obsidian)", fontSize:"9px", fontWeight:700 }}>
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Secondary tabs: Notes, Calendar, Daily */}
+            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid var(--border)" }}>
+              {secondaryTabs.map(tab => (
+                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md text-xs font-medium transition-all relative"
+                  style={{ background: activeTab === tab.key ? "rgba(232,197,71,0.12)" : "transparent", color: activeTab === tab.key ? "var(--accent)" : "var(--muted)", border: activeTab === tab.key ? "1px solid rgba(232,197,71,0.2)" : "1px solid transparent" }}>
+                  {tab.icon}{tab.label}
+                  {tab.badge !== undefined && (
+                    <span className="absolute top-0.5 right-1 w-3 h-3 rounded-full flex items-center justify-center"
+                      style={{ background: "var(--accent)", color:"var(--obsidian)", fontSize:"8px", fontWeight:700 }}>
                       {tab.badge}
                     </span>
                   )}
@@ -361,10 +414,7 @@ export default function Dashboard() {
           {/* ── TASKS TAB ── */}
           {activeTab === "tasks" && (
             <div className="pt-3 pb-20 animate-fade-in">
-              {/* Add Todo first — most important action */}
               <div className="mb-3"><AddTodo onAdd={addTodo} selectedDate={selectedDate} /></div>
-
-              {/* Search + Filters */}
               <div className="mb-3 space-y-2">
                 <div className="flex gap-2">
                   <div className="relative flex-1">
@@ -397,7 +447,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Task list */}
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => <div key={i} className="shimmer rounded-xl h-16 mb-2" />)
               ) : filtered.length === 0 ? (
@@ -412,9 +461,7 @@ export default function Dashboard() {
                     <div>
                       <div className="flex items-center gap-2 mb-2">
                         <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                        <span className="text-xs px-2" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
-                          🔁 DAILY · {dailyTodos.filter(t=>t.completed).length}/{dailyTodos.length}
-                        </span>
+                        <span className="text-xs px-2" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>🔁 DAILY · {dailyTodos.filter(t=>t.completed).length}/{dailyTodos.length}</span>
                         <div className="h-px flex-1" style={{ background: "var(--border)" }} />
                       </div>
                       <ReorderableTodoList todos={dailyTodos} onToggle={toggleTodo} onDelete={deleteTodo} onUpdate={updateTodo} onReorder={r => setDailyOrder(r.map(t=>t.id))} />
@@ -425,9 +472,7 @@ export default function Dashboard() {
                       {dailyTodos.length > 0 && (
                         <div className="flex items-center gap-2 mb-2">
                           <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                          <span className="text-xs px-2" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
-                            ✦ CUSTOM · {customTodos.filter(t=>t.completed).length}/{customTodos.length}
-                          </span>
+                          <span className="text-xs px-2" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>✦ CUSTOM · {customTodos.filter(t=>t.completed).length}/{customTodos.length}</span>
                           <div className="h-px flex-1" style={{ background: "var(--border)" }} />
                         </div>
                       )}
@@ -437,6 +482,13 @@ export default function Dashboard() {
                 </div>
               )}
               {filtered.length > 0 && <p className="text-center text-xs mt-4" style={{ color: "var(--border)" }}>{filtered.length} tasks · Press N to add</p>}
+            </div>
+          )}
+
+          {/* ── MEALS TAB ── */}
+          {activeTab === "meals" && (
+            <div className="pt-3">
+              <Meals meals={meals} selectedDate={selectedDate} onAdd={addMeal} onUpdate={updateMeal} onDelete={deleteMeal} />
             </div>
           )}
 
@@ -450,7 +502,6 @@ export default function Dashboard() {
           {/* ── CALENDAR TAB ── */}
           {activeTab === "calendar" && (
             <div className="pt-3 pb-20 animate-fade-in">
-              {/* Stats */}
               <div className="grid grid-cols-4 gap-2 mb-4">
                 {[
                   { icon: LayoutList, label: "Total", value: total, color: "var(--soft)" },
@@ -465,8 +516,6 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-
-              {/* Progress */}
               <div className="mb-4">
                 <div className="flex justify-between text-xs mb-1" style={{ color: "var(--muted)" }}>
                   <span>{isViewingToday ? `Today · ${completed}/${total}` : `${viewDate} · ${completed}/${total}`}</span>
@@ -474,14 +523,8 @@ export default function Dashboard() {
                 </div>
                 <div className="progress-bar"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
               </div>
-
-              {/* Date Browser */}
               <DateBrowser selectedDate={selectedDate} onDateSelect={setSelectedDate} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} weekOffDaysDisplay={weekOffDaysDisplay} />
-
-              {/* Consistency Calendar */}
               <ConsistencyCalendar todos={todos} weekOffDays={weekOffDays} />
-
-              {/* Mini preview */}
               {filtered.length > 0 && (
                 <div className="mt-4">
                   <p className="text-xs mb-2" style={{ color: "var(--muted)" }}>{filtered.length} task{filtered.length!==1?"s":""} on this day</p>

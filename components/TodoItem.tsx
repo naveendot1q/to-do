@@ -38,9 +38,15 @@ function formatTime(t: string) {
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
-function isDateOverdue(dueDate?: string) {
-  if (!dueDate) return false;
-  return new Date(dueDate) < new Date(new Date().toDateString());
+function isDateOverdue(todo: { due_date?: string; end_time?: string; completed?: boolean }) {
+  if (!todo.due_date || todo.completed) return false;
+  const todayStr = new Date().toISOString().split("T")[0];
+  // Only flag overdue for TODAY tasks that have passed their end_time
+  if (todo.due_date !== todayStr) return false;
+  if (!todo.end_time) return false;
+  const [eh, em] = todo.end_time.split(":").map(Number);
+  const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+  return nowMins > eh * 60 + em;
 }
 
 export default function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoItemProps) {
@@ -50,7 +56,7 @@ export default function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoIte
   const [editStart, setEditStart] = useState(todo.start_time || "");
   const [editEnd, setEditEnd] = useState(todo.end_time || "");
 
-  const overdue = isDateOverdue(todo.due_date) && !todo.completed;
+  const overdue = isDateOverdue(todo);
   const timeStatus = getTimeStatus(todo);
   const pc = priorityConfig[todo.priority];
 
