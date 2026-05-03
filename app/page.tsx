@@ -73,6 +73,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("tasks");
   const [weekOffDays, setWeekOffDays] = useState<string[]>([]);
   const [dailyOrder, setDailyOrder] = useState<string[]>([]);
+  const [allOrder, setAllOrder] = useState<string[]>([]);
   const [mood, setMood] = useState<AppMood>("calm");
   const [moodStyle, setMoodStyle] = useState(MOOD_STYLES.calm);
   const moodRef = useRef<AppMood>("calm");
@@ -101,6 +102,9 @@ export default function Dashboard() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Reset custom order when date changes
+  useEffect(() => { setAllOrder([]); setDailyOrder([]); }, [selectedDate]);
 
   useEffect(() => {
     const update = () => {
@@ -294,24 +298,41 @@ export default function Dashboard() {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
-  const dailyTodosRaw = filtered.filter(t => t.task_type === "daily").sort((a, b) => {
+  // Unified task list — daily sorted by time slot first, then custom, completed always last
+  const filteredBase = filtered.sort((a, b) => {
     if (a.completed && !b.completed) return 1;
     if (!a.completed && b.completed) return -1;
-    if (!a.start_time && !b.start_time) return 0;
-    if (!a.start_time) return 1; if (!b.start_time) return -1;
-    return a.start_time.localeCompare(b.start_time);
+    return 0;
   });
-  const dailyTodos = dailyOrder.length > 0
-    ? [...dailyTodosRaw].sort((a, b) => {
+
+  const allTodosDefault = [
+    // Daily first, sorted by start_time
+    ...filteredBase.filter(t => t.task_type === "daily").sort((a, b) => {
+      if (a.completed && !b.completed) return 1;
+      if (!a.completed && b.completed) return -1;
+      if (!a.start_time && !b.start_time) return 0;
+      if (!a.start_time) return 1; if (!b.start_time) return -1;
+      return a.start_time.localeCompare(b.start_time);
+    }),
+    // Custom next
+    ...filteredBase.filter(t => t.task_type !== "daily"),
+  ];
+
+  // Apply user-defined order if set
+  const allTodos = allOrder.length > 0
+    ? [...allTodosDefault].sort((a, b) => {
         if (a.completed && !b.completed) return 1;
         if (!a.completed && b.completed) return -1;
-        const ai = dailyOrder.indexOf(a.id); const bi = dailyOrder.indexOf(b.id);
+        const ai = allOrder.indexOf(a.id);
+        const bi = allOrder.indexOf(b.id);
         if (ai === -1 && bi === -1) return 0;
         if (ai === -1) return 1; if (bi === -1) return -1;
         return ai - bi;
       })
-    : dailyTodosRaw;
-  const customTodos = filtered.filter(t => t.task_type !== "daily");
+    : allTodosDefault;
+
+  const dailyTodos = allTodos.filter(t => t.task_type === "daily");
+  const customTodos = allTodos.filter(t => t.task_type !== "daily");
 
   const viewDate = selectedDate || todayStr;
   const viewTasks = todos.filter(t => t.due_date === viewDate);
@@ -456,30 +477,13 @@ export default function Dashboard() {
                   <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{!search && "Add one above or go to Daily tab"}</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {dailyTodos.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                        <span className="text-xs px-2" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>🔁 DAILY · {dailyTodos.filter(t=>t.completed).length}/{dailyTodos.length}</span>
-                        <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                      </div>
-                      <ReorderableTodoList todos={dailyTodos} onToggle={toggleTodo} onDelete={deleteTodo} onUpdate={updateTodo} onReorder={r => setDailyOrder(r.map(t=>t.id))} />
-                    </div>
-                  )}
-                  {customTodos.length > 0 && (
-                    <div>
-                      {dailyTodos.length > 0 && (
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                          <span className="text-xs px-2" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>✦ CUSTOM · {customTodos.filter(t=>t.completed).length}/{customTodos.length}</span>
-                          <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                        </div>
-                      )}
-                      <div className="space-y-2">{customTodos.map(t => <TodoItem key={t.id} todo={t} onToggle={toggleTodo} onDelete={deleteTodo} onUpdate={updateTodo} />)}</div>
-                    </div>
-                  )}
-                </div>
+                <ReorderableTodoList
+                  todos={allTodos}
+                  onToggle={toggleTodo}
+                  onDelete={deleteTodo}
+                  onUpdate={updateTodo}
+                  onReorder={r => setAllOrder(r.map(t => t.id))}
+                />
               )}
               {filtered.length > 0 && <p className="text-center text-xs mt-4" style={{ color: "var(--border)" }}>{filtered.length} tasks · Press N to add</p>}
             </div>
