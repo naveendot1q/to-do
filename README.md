@@ -1,4 +1,4 @@
-# ✦ My Todo — Personal Workspace
+# ✦ My Own Todo — Personal Workspace
 
 ## 🚀 Deploy to Vercel (3 steps)
 

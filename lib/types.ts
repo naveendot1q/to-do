@@ -53,19 +53,6 @@ export interface WeekOffTemplate {
   created_at: string;
 }
 
-export interface WeekOffTemplate {
-  id: string;
-  user_id: string;
-  title: string;
-  description?: string;
-  priority: Priority;
-  start_time?: string;
-  end_time?: string;
-  category?: string;
-  active: boolean;
-  created_at: string;
-}
-
 export interface Note {
   id: string;
   user_id: string;
@@ -77,7 +64,18 @@ export interface Note {
   updated_at: string;
 }
 
-export type MealType = 'pre_breakfast' | 'breakfast' | 'lunch' | 'evening_snack';
+export type MealType = 'pre_breakfast' | 'breakfast' | 'lunch' | 'evening_snack' | 'dinner' | 'snack';
+
+export interface MealFood {
+  name: string;
+  quantity: number;
+  unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  fiber?: number;
+}
 
 export interface Meal {
   id: string;
@@ -88,6 +86,76 @@ export interface Meal {
   description?: string;
   time?: string;
   calories?: number;
+  protein?: number;
+  carbs?: number;
+  fats?: number;
+  fiber?: number;
+  foods?: MealFood[];
+  completed: boolean;
+  created_at: string;
+}
+
+// ─── GYM TYPES ────────────────────────────────────────────────────────────────
+
+export type WorkoutSplit = 'chest_triceps_abs' | 'back_biceps_abs' | 'legs_shoulders_cardio' | 'custom';
+export type ExerciseCategory = 'chest' | 'back' | 'shoulders' | 'biceps' | 'triceps' | 'legs' | 'abs' | 'cardio' | 'compound';
+
+export interface ExerciseSet {
+  set_number: number;
+  weight: number;       // kg
+  reps: number;
+  rpe?: number;         // Rate of Perceived Exertion 1-10
+  rest_seconds?: number;
+  completed: boolean;
+}
+
+export interface Exercise {
+  id: string;
+  name: string;
+  category: ExerciseCategory;
+  sets: ExerciseSet[];
+  notes?: string;
+  order: number;
+}
+
+export interface GymSession {
+  id: string;
+  user_id: string;
+  date: string;
+  split: WorkoutSplit;
+  split_label: string;
+  exercises: Exercise[];
+  warmup_done: boolean;
+  warmup_type?: string;       // e.g. "1km run"
+  duration_minutes?: number;
+  total_volume?: number;      // sum of weight × reps
+  notes?: string;
+  completed: boolean;
+  created_at: string;
+}
+
+// ─── HABIT TYPES ──────────────────────────────────────────────────────────────
+
+export type HabitFrequency = 'daily' | 'weekdays' | 'weekends' | 'custom';
+
+export interface Habit {
+  id: string;
+  user_id: string;
+  name: string;
+  icon: string;
+  color: string;
+  frequency: HabitFrequency;
+  target_count: number;      // times per day
+  created_at: string;
+  active: boolean;
+}
+
+export interface HabitLog {
+  id: string;
+  user_id: string;
+  habit_id: string;
+  date: string;
+  count: number;
   completed: boolean;
   created_at: string;
 }
