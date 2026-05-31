@@ -346,11 +346,10 @@ export default function Dashboard() {
     if (t.completed) taskCountsByDate[t.due_date].completed++;
   });
 
-  const weekOffDaysDisplay = weekOffDays.reduce((acc, d) => {
-    const allDone = (taskCountsByDate[d]?.total || 0) > 0 && taskCountsByDate[d]?.completed === taskCountsByDate[d]?.total;
-    acc[d] = { color: allDone ? "#2ed573" : "#a78bfa" };
-    return acc;
-  }, {} as Record<string, { color: string }>);
+  const weekOffDaysDisplay = weekOffDays.map(d => ({
+    date: d,
+    allDone: (taskCountsByDate[d]?.total || 0) > 0 && taskCountsByDate[d]?.completed === taskCountsByDate[d]?.total,
+  }));
 
   const moodBanner = mood === "critical"
     ? { text: "⚠️ Tasks overdue — focus up!", bg: "rgba(255,71,87,0.12)", border: "rgba(255,71,87,0.25)", color: "#ff4757" }
