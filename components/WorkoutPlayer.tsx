@@ -6,6 +6,7 @@ import {
   Plus, Minus, Settings2, Trophy, Timer, Weight
 } from "lucide-react";
 import { GymSession, Exercise, ExerciseSet } from "@/lib/types";
+import Portal from "@/components/Portal";
 
 interface Props {
   session: GymSession;
@@ -112,8 +113,8 @@ function RestScreen({ initialSeconds, nextStep, onDone, onSkip }: {
   const strokeDash = (pct / 100) * circumference;
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
+    <Portal><div style={{
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999,
       background: "#1a1aff",
       display: "flex", flexDirection: "column",
       paddingTop: "env(safe-area-inset-top, 44px)",
@@ -193,7 +194,7 @@ function RestScreen({ initialSeconds, nextStep, onDone, onSkip }: {
           Skip Rest
         </button>
       </div>
-    </div>
+    </div></Portal>
   );
 }
 
@@ -210,7 +211,7 @@ function EditPanel({ step, onUpdate, onClose, onAddSet, onRemoveSet }: {
   const ex = step.exercise;
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.75)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+    <Portal><div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, background: "rgba(0,0,0,0.75)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
       onClick={onClose}>
       <div
         style={{ background: "#14141e", borderRadius: "24px 24px 0 0", padding: 20, maxHeight: "80vh", overflowY: "auto", border: "1px solid rgba(255,255,255,0.1)", paddingBottom: "calc(20px + env(safe-area-inset-bottom, 16px))" }}
@@ -278,7 +279,7 @@ function EditPanel({ step, onUpdate, onClose, onAddSet, onRemoveSet }: {
           </p>
         )}
       </div>
-    </div>
+    </div></Portal>
   );
 }
 
@@ -292,7 +293,7 @@ function CompletionScreen({ session, elapsed, onClose }: { session: GymSession; 
     a + ex.sets.filter(s => s.completed && !ex.is_timed).reduce((b, s) => b + s.weight * s.reps, 0), 0);
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "linear-gradient(135deg, #0a0a0f 0%, rgba(46,213,115,0.12) 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 24px" }}>
+    <Portal><div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, background: "linear-gradient(135deg, #0a0a0f 0%, rgba(46,213,115,0.12) 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 24px" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ width: 88, height: 88, borderRadius: "50%", background: "rgba(46,213,115,0.15)", border: "2px solid rgba(46,213,115,0.4)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
           <Trophy size={40} style={{ color: "#2ed573" }} />
@@ -315,7 +316,7 @@ function CompletionScreen({ session, elapsed, onClose }: { session: GymSession; 
           Done
         </button>
       </div>
-    </div>
+    </div></Portal>
   );
 }
 
@@ -449,10 +450,10 @@ export default function WorkoutPlayer({ session, onUpdate, onClose }: Props) {
   const timedCirc = 2 * Math.PI * 60;
 
   return (
-    <>
+    <Portal>
       {/* Full-screen exercise view */}
       <div style={{
-        position: "fixed", inset: 0, zIndex: 9998,
+        position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99998,
         background: "#0a0a0f",
         display: "flex", flexDirection: "column",
         paddingTop: "env(safe-area-inset-top, 44px)",
@@ -610,6 +611,6 @@ export default function WorkoutPlayer({ session, onUpdate, onClose }: Props) {
           onRemoveSet={removeSet}
         />
       )}
-    </>
+    </Portal>
   );
 }
