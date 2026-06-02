@@ -1,5 +1,5 @@
 export type Priority = "high" | "medium" | "low";
-export type TaskType = "custom" | "daily";
+export type TaskType = "custom" | "daily" | "routine";
 export type AppMood = "calm" | "warning" | "critical" | "success";
 
 export interface Todo {
@@ -14,6 +14,7 @@ export interface Todo {
   end_time?: string;
   category?: string;
   task_type: TaskType;
+  routine_block?: string;  // which routine block this belongs to
   created_at: string;
 }
 
@@ -98,14 +99,16 @@ export interface Meal {
 // ─── GYM TYPES ────────────────────────────────────────────────────────────────
 
 export type WorkoutSplit = 'chest_triceps_abs' | 'back_biceps_abs' | 'legs_shoulders_cardio' | 'custom';
-export type ExerciseCategory = 'chest' | 'back' | 'shoulders' | 'biceps' | 'triceps' | 'legs' | 'abs' | 'cardio' | 'compound';
+export type ExerciseCategory = 'chest' | 'back' | 'shoulders' | 'biceps' | 'triceps' | 'legs' | 'abs' | 'forearms' | 'cardio' | 'compound';
+export type SetType = 'reps' | 'duration';
 
 export interface ExerciseSet {
   set_number: number;
-  weight: number;       // kg
-  reps: number;
-  rpe?: number;         // Rate of Perceived Exertion 1-10
-  rest_seconds?: number;
+  weight: number;           // kg (0 for bodyweight/timed)
+  reps: number;             // 0 when using duration
+  duration_seconds?: number; // for plank, cardio etc.
+  set_type?: SetType;        // 'reps' (default) or 'duration'
+  rpe?: number;             // Rate of Perceived Exertion 1-10
   completed: boolean;
 }
 
@@ -116,6 +119,7 @@ export interface Exercise {
   sets: ExerciseSet[];
   notes?: string;
   order: number;
+  is_timed?: boolean; // plank, cardio — uses duration_seconds instead of reps
 }
 
 export interface GymSession {
@@ -126,11 +130,20 @@ export interface GymSession {
   split_label: string;
   exercises: Exercise[];
   warmup_done: boolean;
-  warmup_type?: string;       // e.g. "1km run"
+  warmup_type?: string;
   duration_minutes?: number;
-  total_volume?: number;      // sum of weight × reps
+  total_volume?: number;
   notes?: string;
   completed: boolean;
+  created_at: string;
+}
+
+export interface BodyWeightLog {
+  id: string;
+  user_id: string;
+  date: string;
+  weight_kg: number;
+  notes?: string;
   created_at: string;
 }
 
@@ -145,7 +158,7 @@ export interface Habit {
   icon: string;
   color: string;
   frequency: HabitFrequency;
-  target_count: number;      // times per day
+  target_count: number;
   created_at: string;
   active: boolean;
 }

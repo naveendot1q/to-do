@@ -79,3 +79,31 @@ CREATE POLICY "Users can only access their own habit logs"
 CREATE INDEX IF NOT EXISTS idx_gym_sessions_user_date ON gym_sessions(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_habit_logs_user_date ON habit_logs(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_meals_user_date ON meals(user_id, date);
+
+-- ================================================================
+-- V2 PATCH: Body weight logs + routine_block column on todos
+-- ================================================================
+
+-- Body weight tracking table
+CREATE TABLE IF NOT EXISTS body_weight_logs (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  date text NOT NULL,
+  weight_kg numeric(5,2) NOT NULL,
+  notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  UNIQUE(user_id, date)
+);
+
+ALTER TABLE body_weight_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can only access their own body weight logs" ON body_weight_logs;
+CREATE POLICY "Users can only access their own body weight logs"
+  ON body_weight_logs FOR ALL
+  USING (auth.uid() = user_id);
+
+-- Add routine_block column to todos (links a todo to a routine block)
+ALTER TABLE todos ADD COLUMN IF NOT EXISTS routine_block text;
+
+-- Index
+CREATE INDEX IF NOT EXISTS idx_body_weight_user_date ON body_weight_logs(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_todos_routine_block ON todos(user_id, routine_block, due_date);

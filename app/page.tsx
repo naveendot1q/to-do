@@ -4,19 +4,16 @@ import dynamic from "next/dynamic";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { Todo, DailyTemplate, WeekOffTemplate, Note, Meal, GymSession, FilterType, SortType, Priority, AppMood } from "@/lib/types";
+import { Todo, DailyTemplate, WeekOffTemplate, Note, Meal, GymSession, BodyWeightLog, FilterType, SortType, Priority, AppMood } from "@/lib/types";
 import AddTodo from "@/components/AddTodo";
-import TodoItem from "@/components/TodoItem";
-import DateBrowser from "@/components/DateBrowser";
-import DailyTemplates from "@/components/DailyTemplates";
-import WeekOffTemplates from "@/components/WeekOffTemplates";
 import ReorderableTodoList from "@/components/ReorderableTodoList";
-import ConsistencyCalendar from "@/components/ConsistencyCalendar";
+import DateBrowser from "@/components/DateBrowser";
 import Notes from "@/components/Notes";
 import Meals from "@/components/Meals";
 import Gym from "@/components/Gym";
 import Routine from "@/components/Routine";
-import { LogOut, Search, SlidersHorizontal, CheckCircle2, Clock, AlertTriangle, LayoutList, CalendarDays, RefreshCw, StickyNote, UtensilsCrossed, Dumbbell, ListChecks, BookOpen } from "lucide-react";
+import ConsistencyCalendar from "@/components/ConsistencyCalendar";
+import { LogOut, Search, SlidersHorizontal, CheckCircle2, Clock, AlertTriangle, LayoutList, CalendarDays, StickyNote, UtensilsCrossed, Dumbbell, ListChecks } from "lucide-react";
 const NotificationManager = dynamic(() => import("@/components/NotificationManager"), { ssr: false });
 const InstallBanner = dynamic(() => import("@/components/InstallBanner"), { ssr: false });
 
@@ -53,27 +50,23 @@ const MOOD_STYLES: Record<AppMood, { bg: string; grid: string }> = {
   critical: { bg: "radial-gradient(ellipse at 50% 30%, rgba(255,71,87,0.13) 0%, transparent 55%), radial-gradient(ellipse at 20% 80%, rgba(255,71,87,0.07) 0%, transparent 50%)", grid: "rgba(255,71,87,0.03)" },
 };
 
-type Tab = "tasks" | "routine" | "gym" | "meals" | "notes" | "calendar" | "daily";
+type Tab = "tasks" | "routine" | "gym" | "meals" | "notes" | "calendar";
 
 export default function Dashboard() {
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [templates, setTemplates] = useState<DailyTemplate[]>([]);
-  const [weekOffTemplates, setWeekOffTemplates] = useState<WeekOffTemplate[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [gymSessions, setGymSessions] = useState<GymSession[]>([]);
+  const [bodyWeightLogs, setBodyWeightLogs] = useState<BodyWeightLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [applying, setApplying] = useState(false);
-  const [applyingWeekOff, setApplyingWeekOff] = useState(false);
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
-  const [sort, setSort] = useState<SortType>("priority");
+  const [sort, setSort] = useState<SortType>("start_time");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(() => toLocalDateStr(new Date()));
-  const [activeTab, setActiveTab] = useState<Tab>("tasks");
+  const [activeTab, setActiveTab] = useState<Tab>("routine");
   const [weekOffDays, setWeekOffDays] = useState<string[]>([]);
-  const [dailyOrder, setDailyOrder] = useState<string[]>([]);
   const [allOrder, setAllOrder] = useState<string[]>([]);
   const [mood, setMood] = useState<AppMood>("calm");
   const [moodStyle, setMoodStyle] = useState(MOOD_STYLES.calm);
@@ -90,10 +83,9 @@ export default function Dashboard() {
       if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal1") { router.replace("/setup-totp"); return; }
       setUser({ id: session.user.id, email: session.user.email });
       await Promise.all([
-        fetchTodos(session.user.id), fetchTemplates(session.user.id),
-        fetchWeekOffTemplates(session.user.id), fetchWeekOff(session.user.id),
+        fetchTodos(session.user.id), fetchWeekOff(session.user.id),
         fetchNotes(session.user.id), fetchMeals(session.user.id),
-        fetchGymSessions(session.user.id),
+        fetchGymSessions(session.user.id), fetchBodyWeight(session.user.id),
       ]);
     })();
     function onKey(e: KeyboardEvent) {
@@ -105,7 +97,7 @@ export default function Dashboard() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  useEffect(() => { setAllOrder([]); setDailyOrder([]); }, [selectedDate]);
+  useEffect(() => { setAllOrder([]); }, [selectedDate]);
 
   useEffect(() => {
     const update = () => {
@@ -117,17 +109,10 @@ export default function Dashboard() {
     return () => clearInterval(iv);
   }, [todos, selectedDate]);
 
+  // ── FETCH ──────────────────────────────────────────────────────────────────
   async function fetchTodos(uid: string) {
-    const { data } = await supabase.from("todos").select("*").eq("user_id", uid).order("created_at", { ascending: false });
+    const { data } = await supabase.from("todos").select("*").eq("user_id", uid).order("start_time", { ascending: true, nullsFirst: false });
     setTodos(data || []); setLoading(false);
-  }
-  async function fetchTemplates(uid: string) {
-    const { data } = await supabase.from("daily_templates").select("*").eq("user_id", uid).order("created_at");
-    setTemplates(data || []);
-  }
-  async function fetchWeekOffTemplates(uid: string) {
-    const { data } = await supabase.from("week_off_templates").select("*").eq("user_id", uid).order("created_at");
-    setWeekOffTemplates(data || []);
   }
   async function fetchWeekOff(uid: string) {
     const { data } = await supabase.from("week_off_days").select("date").eq("user_id", uid);
@@ -145,6 +130,10 @@ export default function Dashboard() {
     const { data } = await supabase.from("gym_sessions").select("*").eq("user_id", uid).order("date", { ascending: false });
     setGymSessions(data || []);
   }
+  async function fetchBodyWeight(uid: string) {
+    const { data } = await supabase.from("body_weight_logs").select("*").eq("user_id", uid).order("date", { ascending: false });
+    setBodyWeightLogs(data || []);
+  }
 
   async function toggleWeekOff(date: string) {
     if (!user) return;
@@ -158,9 +147,15 @@ export default function Dashboard() {
   }
 
   // ── TODOS ──────────────────────────────────────────────────────────────────
-  async function addTodo(todo: { title: string; description?: string; priority: Priority; due_date?: string; start_time?: string; end_time?: string; category?: string }) {
+  async function addTodo(todo: { title: string; description?: string; priority: Priority; due_date?: string; start_time?: string; end_time?: string; category?: string; routine_block?: string; task_type?: string }) {
     if (!user) return;
-    const { data } = await supabase.from("todos").insert({ ...todo, due_date: todo.due_date || selectedDate || undefined, user_id: user.id, completed: false, task_type: "custom" }).select().single();
+    const { data } = await supabase.from("todos").insert({
+      ...todo,
+      due_date: todo.due_date || selectedDate || undefined,
+      user_id: user.id,
+      completed: false,
+      task_type: todo.task_type || "custom",
+    }).select().single();
     if (data) setTodos(p => [data, ...p]);
   }
   async function toggleTodo(id: string, completed: boolean) {
@@ -176,37 +171,7 @@ export default function Dashboard() {
     setTodos(p => p.map(t => t.id === id ? { ...t, ...updates } : t));
   }
 
-  // ── TEMPLATES ─────────────────────────────────────────────────────────────
-  async function addTemplate(t: Omit<DailyTemplate, "id"|"user_id"|"created_at">) {
-    if (!user) return;
-    const { data } = await supabase.from("daily_templates").insert({ ...t, user_id: user.id }).select().single();
-    if (data) setTemplates(p => [...p, data]);
-  }
-  async function updateTemplate(id: string, updates: Partial<DailyTemplate>) {
-    await supabase.from("daily_templates").update(updates).eq("id", id);
-    setTemplates(p => p.map(t => t.id === id ? { ...t, ...updates } : t));
-  }
-  async function deleteTemplate(id: string) {
-    await supabase.from("daily_templates").delete().eq("id", id);
-    setTemplates(p => p.filter(t => t.id !== id));
-  }
-
-  // ── WEEK-OFF TEMPLATES ────────────────────────────────────────────────────
-  async function addWeekOffTemplate(t: Omit<WeekOffTemplate, "id"|"user_id"|"created_at">) {
-    if (!user) return;
-    const { data } = await supabase.from("week_off_templates").insert({ ...t, user_id: user.id }).select().single();
-    if (data) setWeekOffTemplates(p => [...p, data]);
-  }
-  async function updateWeekOffTemplate(id: string, updates: Partial<WeekOffTemplate>) {
-    await supabase.from("week_off_templates").update(updates).eq("id", id);
-    setWeekOffTemplates(p => p.map(t => t.id === id ? { ...t, ...updates } : t));
-  }
-  async function deleteWeekOffTemplate(id: string) {
-    await supabase.from("week_off_templates").delete().eq("id", id);
-    setWeekOffTemplates(p => p.filter(t => t.id !== id));
-  }
-
-  // ── NOTES ─────────────────────────────────────────────────────────────────
+  // ── NOTES ──────────────────────────────────────────────────────────────────
   async function addNote(note: { title: string; content: string; color: string; pinned: boolean }) {
     if (!user) return;
     const { data } = await supabase.from("notes").insert({ ...note, user_id: user.id }).select().single();
@@ -221,7 +186,7 @@ export default function Dashboard() {
     setNotes(p => p.filter(n => n.id !== id));
   }
 
-  // ── MEALS ─────────────────────────────────────────────────────────────────
+  // ── MEALS ──────────────────────────────────────────────────────────────────
   async function addMeal(meal: Omit<Meal, "id"|"user_id"|"created_at">) {
     if (!user) return;
     const { data } = await supabase.from("meals").insert({ ...meal, user_id: user.id }).select().single();
@@ -236,7 +201,7 @@ export default function Dashboard() {
     setMeals(p => p.filter(m => m.id !== id));
   }
 
-  // ── GYM SESSIONS ──────────────────────────────────────────────────────────
+  // ── GYM ────────────────────────────────────────────────────────────────────
   async function addGymSession(session: Omit<GymSession, "id"|"user_id"|"created_at">) {
     if (!user) return;
     const { data } = await supabase.from("gym_sessions").insert({ ...session, user_id: user.id }).select().single();
@@ -251,36 +216,15 @@ export default function Dashboard() {
     setGymSessions(p => p.filter(s => s.id !== id));
   }
 
-  // ── TEMPLATE APPLY ────────────────────────────────────────────────────────
-  async function applyTemplatesToNext() {
+  // ── BODY WEIGHT ────────────────────────────────────────────────────────────
+  async function addBodyWeight(log: Omit<BodyWeightLog, "id"|"user_id"|"created_at">) {
     if (!user) return;
-    setApplying(true);
-    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = toLocalDateStr(tomorrow);
-    const active = templates.filter(t => t.active);
-    if (active.length > 0) {
-      const inserts = active.map(t => ({ user_id: user.id, title: t.title, description: t.description, priority: t.priority, start_time: t.start_time, end_time: t.end_time, category: t.category, due_date: tomorrowStr, completed: false, task_type: "daily" as const }));
-      const { data } = await supabase.from("todos").insert(inserts).select();
-      if (data) setTodos(p => [...data, ...p]);
-    }
-    setApplying(false);
+    const { data } = await supabase.from("body_weight_logs").insert({ ...log, user_id: user.id }).select().single();
+    if (data) setBodyWeightLogs(p => [data, ...p]);
   }
-
-  async function applyWeekOffTemplatesToNext(): Promise<{ applied: boolean; date?: string; message: string }> {
-    if (!user) return { applied: false, message: "Not logged in" };
-    setApplyingWeekOff(true);
-    const today = toLocalDateStr(new Date());
-    const futureWeekOffs = weekOffDays.filter(d => d > today).sort();
-    if (futureWeekOffs.length === 0) { setApplyingWeekOff(false); return { applied: false, message: "No upcoming week-off days found." }; }
-    const nextWeekOff = futureWeekOffs[0];
-    const active = weekOffTemplates.filter(t => t.active);
-    if (active.length > 0) {
-      const inserts = active.map(t => ({ user_id: user.id, title: t.title, description: t.description, priority: t.priority, start_time: t.start_time, end_time: t.end_time, category: t.category, due_date: nextWeekOff, completed: false, task_type: "daily" as const }));
-      const { data } = await supabase.from("todos").insert(inserts).select();
-      if (data) setTodos(p => [...data, ...p]);
-    }
-    setApplyingWeekOff(false);
-    return { applied: true, date: nextWeekOff, message: `Applied to ${nextWeekOff}` };
+  async function updateBodyWeight(id: string, updates: Partial<BodyWeightLog>) {
+    await supabase.from("body_weight_logs").update(updates).eq("id", id);
+    setBodyWeightLogs(p => p.map(l => l.id === id ? { ...l, ...updates } : l));
   }
 
   async function handleLogout() { await supabase.auth.signOut(); router.push("/login"); }
@@ -291,20 +235,18 @@ export default function Dashboard() {
     if (h < 12) return "Good Morning, Naveen";
     if (h < 17) return "Good Afternoon, Naveen";
     if (h < 21) return "Good Evening, Naveen";
-    return "Night Mode, Naveen 🌙";
+    return "Night mode, Naveen 🌙";
   }
 
-  // ── DERIVED STATE ─────────────────────────────────────────────────────────
+  // ── DERIVED ────────────────────────────────────────────────────────────────
   const todayStr = toLocalDateStr(new Date());
   const viewDate = selectedDate || todayStr;
-  const isViewingToday = viewDate === todayStr;
   const isWeekOff = weekOffDays.includes(viewDate);
 
   const filtered = todos.filter(t => {
     if (t.due_date !== viewDate) return false;
     if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
-    const now = new Date();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const now = new Date(); const nowMins = now.getHours() * 60 + now.getMinutes();
     if (filter === "active") return !t.completed;
     if (filter === "completed") return t.completed;
     if (filter === "overdue") {
@@ -317,11 +259,10 @@ export default function Dashboard() {
 
   const sortedFiltered = [...filtered].sort((a, b) => {
     if (sort === "priority") { const o = { high: 0, medium: 1, low: 2 }; return o[a.priority] - o[b.priority]; }
-    if (sort === "start_time") { return (a.start_time || "").localeCompare(b.start_time || ""); }
-    if (sort === "due_date") { return (a.due_date || "").localeCompare(b.due_date || ""); }
+    if (sort === "start_time") return (a.start_time || "99:99").localeCompare(b.start_time || "99:99");
+    if (sort === "due_date") return (a.due_date || "").localeCompare(b.due_date || "");
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
-
   const allTodos = allOrder.length > 0
     ? [...sortedFiltered].sort((a, b) => allOrder.indexOf(a.id) - allOrder.indexOf(b.id))
     : sortedFiltered;
@@ -329,8 +270,7 @@ export default function Dashboard() {
   const total = filtered.length;
   const completed = filtered.filter(t => t.completed).length;
   const pending = total - completed;
-  const now2 = new Date();
-  const nowMins2 = now2.getHours() * 60 + now2.getMinutes();
+  const nowMins2 = new Date().getHours() * 60 + new Date().getMinutes();
   const overdue = filtered.filter(t => {
     if (t.completed || !t.end_time || t.due_date !== todayStr) return false;
     const [eh, em] = t.end_time.split(":").map(Number);
@@ -359,17 +299,16 @@ export default function Dashboard() {
     ? { text: "🕐 Task in progress — stay focused", bg: "rgba(255,165,2,0.1)", border: "rgba(255,165,2,0.25)", color: "#ffa502" }
     : null;
 
-  // ── TAB CONFIG ────────────────────────────────────────────────────────────
+  // ── TABS ───────────────────────────────────────────────────────────────────
   const primaryTabs = [
-    { key: "tasks" as Tab,   label: "Tasks",   icon: <ListChecks size={14} />,      badge: pending > 0 ? pending : undefined },
-    { key: "routine" as Tab, label: "Routine", icon: <Clock size={14} />,           badge: undefined },
-    { key: "gym" as Tab,     label: "Gym",     icon: <Dumbbell size={14} />,        badge: undefined },
-    { key: "meals" as Tab,   label: "Meals",   icon: <UtensilsCrossed size={14} />, badge: undefined },
+    { key: "routine" as Tab, label: "Routine",  icon: <Clock size={14} />,           badge: pending > 0 ? pending : undefined },
+    { key: "gym"     as Tab, label: "Gym",      icon: <Dumbbell size={14} />,        badge: undefined },
+    { key: "meals"   as Tab, label: "Meals",    icon: <UtensilsCrossed size={14} />, badge: undefined },
+    { key: "tasks"   as Tab, label: "All Tasks",icon: <ListChecks size={14} />,      badge: undefined },
   ];
   const secondaryTabs = [
-    { key: "notes" as Tab,    label: "Notes",    icon: <StickyNote size={11} />,      badge: notes.filter(n => n.pinned).length || undefined },
-    { key: "calendar" as Tab, label: "Calendar", icon: <CalendarDays size={11} />,    badge: undefined },
-    { key: "daily" as Tab,    label: "Daily",    icon: <RefreshCw size={11} />,       badge: undefined },
+    { key: "notes"    as Tab, label: "Notes",    icon: <StickyNote size={11} />,   badge: notes.filter(n => n.pinned).length || undefined },
+    { key: "calendar" as Tab, label: "Calendar", icon: <CalendarDays size={11} />, badge: undefined },
   ];
 
   return (
@@ -382,7 +321,7 @@ export default function Dashboard() {
       <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
         <div className="max-w-2xl mx-auto px-4">
 
-          {/* ── STICKY TOP BLOCK ── */}
+          {/* ── STICKY TOP ── */}
           <div className="sticky top-0 pt-4 pb-2" style={{ zIndex: 50, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", background: "rgba(10,10,15,0.88)" }}>
             <div className="flex items-center justify-between mb-2">
               <div>
@@ -417,13 +356,12 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
-
             {/* Secondary tabs */}
             <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: "rgba(17,17,24,0.8)", border: "1px solid var(--border)" }}>
               {secondaryTabs.map(tab => (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md text-xs font-medium transition-all relative"
-                  style={{ background: activeTab === tab.key ? "rgba(232,197,71,0.12)" : "transparent", color: activeTab === tab.key ? "var(--accent)" : "var(--muted)", border: activeTab === tab.key ? "1px solid rgba(232,197,71,0.2)" : "1px solid transparent" }}>
+                  style={{ background: activeTab===tab.key ? "rgba(232,197,71,0.12)" : "transparent", color: activeTab===tab.key ? "var(--accent)" : "var(--muted)", border: activeTab===tab.key ? "1px solid rgba(232,197,71,0.2)" : "1px solid transparent" }}>
                   {tab.icon}{tab.label}
                   {tab.badge !== undefined && (
                     <span className="absolute top-0.5 right-1 w-3 h-3 rounded-full flex items-center justify-center"
@@ -436,9 +374,59 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* ── TASKS TAB ── */}
+          {/* ── ROUTINE TAB ── */}
+          {activeTab === "routine" && (
+            <div className="pt-3">
+              <div className="mb-3">
+                <DateBrowser selectedDate={selectedDate} onDateSelect={setSelectedDate} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} weekOffDaysDisplay={weekOffDaysDisplay} />
+              </div>
+              <Routine
+                todos={todos}
+                selectedDate={selectedDate}
+                isWeekOff={isWeekOff}
+                onToggle={toggleTodo}
+                onAdd={addTodo}
+                onDelete={deleteTodo}
+                onUpdate={updateTodo}
+              />
+            </div>
+          )}
+
+          {/* ── GYM TAB ── */}
+          {activeTab === "gym" && (
+            <div className="pt-3">
+              <div className="mb-3">
+                <DateBrowser selectedDate={selectedDate} onDateSelect={setSelectedDate} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} weekOffDaysDisplay={weekOffDaysDisplay} />
+              </div>
+              <Gym
+                sessions={gymSessions}
+                bodyWeightLogs={bodyWeightLogs}
+                selectedDate={selectedDate}
+                onAdd={addGymSession}
+                onUpdate={updateGymSession}
+                onDelete={deleteGymSession}
+                onAddWeight={addBodyWeight}
+                onUpdateWeight={updateBodyWeight}
+              />
+            </div>
+          )}
+
+          {/* ── MEALS TAB ── */}
+          {activeTab === "meals" && (
+            <div className="pt-3">
+              <div className="mb-3">
+                <DateBrowser selectedDate={selectedDate} onDateSelect={setSelectedDate} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} weekOffDaysDisplay={weekOffDaysDisplay} />
+              </div>
+              <Meals meals={meals} selectedDate={selectedDate} onAdd={addMeal} onUpdate={updateMeal} onDelete={deleteMeal} />
+            </div>
+          )}
+
+          {/* ── ALL TASKS TAB ── */}
           {activeTab === "tasks" && (
             <div className="pt-3 pb-20 animate-fade-in">
+              <div className="mb-3">
+                <DateBrowser selectedDate={selectedDate} onDateSelect={setSelectedDate} taskCountsByDate={taskCountsByDate} weekOffDays={weekOffDays} onToggleWeekOff={toggleWeekOff} weekOffDaysDisplay={weekOffDaysDisplay} />
+              </div>
               <div className="mb-3"><AddTodo onAdd={addTodo} selectedDate={selectedDate} /></div>
               <div className="mb-3 space-y-2">
                 <div className="flex gap-2">
@@ -463,8 +451,8 @@ export default function Dashboard() {
                       ))}
                     </div>
                     <select value={sort} onChange={e => setSort(e.target.value as SortType)} className="input-field text-xs" style={{ padding: "0.35rem 0.6rem", width: "auto" }}>
-                      <option value="priority">Priority</option>
                       <option value="start_time">Time</option>
+                      <option value="priority">Priority</option>
                       <option value="due_date">Due Date</option>
                       <option value="created_at">Newest</option>
                     </select>
@@ -477,33 +465,12 @@ export default function Dashboard() {
                 <div className="text-center py-12 rounded-xl" style={{ background: "rgba(26,26,36,0.8)", border: "1px solid var(--border)" }}>
                   <p style={{ fontSize: "2rem" }}>📝</p>
                   <p className="mt-2 font-medium" style={{ color: "var(--soft)" }}>{search ? "No tasks match" : "No tasks for this day"}</p>
-                  <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{!search && "Add one above or go to Daily tab"}</p>
+                  <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{!search && "Add above or use Routine tab"}</p>
                 </div>
               ) : (
                 <ReorderableTodoList todos={allTodos} onToggle={toggleTodo} onDelete={deleteTodo} onUpdate={updateTodo} onReorder={r => setAllOrder(r.map(t => t.id))} />
               )}
               {filtered.length > 0 && <p className="text-center text-xs mt-4" style={{ color: "var(--border)" }}>{filtered.length} tasks · Press N to add</p>}
-            </div>
-          )}
-
-          {/* ── ROUTINE TAB ── */}
-          {activeTab === "routine" && (
-            <div className="pt-3">
-              <Routine isWeekOff={isWeekOff} />
-            </div>
-          )}
-
-          {/* ── GYM TAB ── */}
-          {activeTab === "gym" && (
-            <div className="pt-3">
-              <Gym sessions={gymSessions} selectedDate={selectedDate} onAdd={addGymSession} onUpdate={updateGymSession} onDelete={deleteGymSession} />
-            </div>
-          )}
-
-          {/* ── MEALS TAB ── */}
-          {activeTab === "meals" && (
-            <div className="pt-3">
-              <Meals meals={meals} selectedDate={selectedDate} onAdd={addMeal} onUpdate={updateMeal} onDelete={deleteMeal} />
             </div>
           )}
 
@@ -522,7 +489,7 @@ export default function Dashboard() {
                   { icon: LayoutList, label: "Total",   value: total,     color: "var(--soft)" },
                   { icon: CheckCircle2, label: "Done",  value: completed, color: "var(--success)" },
                   { icon: Clock,  label: "Pending",     value: pending,   color: "var(--accent)" },
-                  { icon: AlertTriangle, label: "Overdue", value: overdue, color: "var(--danger)" },
+                  { icon: AlertTriangle, label: "Late", value: overdue,   color: "var(--danger)" },
                 ].map(({ icon: Icon, label, value, color }) => (
                   <div key={label} className="rounded-xl p-2.5 text-center" style={{ background: "rgba(26,26,36,0.85)", border: "1px solid var(--border)" }}>
                     <Icon size={14} className="mx-auto mb-1" style={{ color }} />
@@ -533,7 +500,7 @@ export default function Dashboard() {
               </div>
               <div className="mb-4">
                 <div className="flex justify-between text-xs mb-1" style={{ color: "var(--muted)" }}>
-                  <span>{isViewingToday ? `Today · ${completed}/${total}` : `${viewDate} · ${completed}/${total}`}</span>
+                  <span>{viewDate} · {completed}/{total}</span>
                   <span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono',monospace" }}>{progress}%</span>
                 </div>
                 <div className="progress-bar"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
@@ -543,31 +510,20 @@ export default function Dashboard() {
               {filtered.length > 0 && (
                 <div className="mt-4">
                   <p className="text-xs mb-2" style={{ color: "var(--muted)" }}>{filtered.length} task{filtered.length!==1?"s":""} on this day</p>
-                  {filtered.slice(0,3).map(t => (
+                  {filtered.slice(0,5).map(t => (
                     <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg mb-2" style={{ background: "rgba(26,26,36,0.7)", border: "1px solid var(--border)" }}>
                       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: t.completed ? "var(--success)" : t.priority==="high" ? "var(--danger)" : t.priority==="medium" ? "var(--warning)" : "var(--success)" }} />
                       <span className="text-sm flex-1" style={{ color: t.completed ? "var(--muted)" : "var(--soft)", textDecoration: t.completed ? "line-through" : "none" }}>{t.title}</span>
                       {t.start_time && <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{t.start_time}</span>}
                     </div>
                   ))}
-                  {filtered.length > 3 && (
+                  {filtered.length > 5 && (
                     <button onClick={() => setActiveTab("tasks")} className="w-full text-xs py-2 rounded-lg" style={{ color: "var(--accent)", border: "1px dashed rgba(232,197,71,0.2)" }}>
-                      +{filtered.length-3} more — view in Tasks
+                      +{filtered.length-5} more — view All Tasks
                     </button>
                   )}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* ── DAILY TAB ── */}
-          {activeTab === "daily" && (
-            <div className="pt-3 pb-20 animate-fade-in">
-              <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
-                <strong style={{ color: "var(--accent)" }}>Daily tasks</strong> add to next day. <strong style={{ color: "#a78bfa" }}>Week-off tasks</strong> add to your next marked week-off day.
-              </p>
-              <DailyTemplates templates={templates} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} onApplyToNext={applyTemplatesToNext} applying={applying} />
-              <WeekOffTemplates templates={weekOffTemplates} weekOffDays={weekOffDays} onAdd={addWeekOffTemplate} onUpdate={updateWeekOffTemplate} onDelete={deleteWeekOffTemplate} onApplyToNextWeekOff={applyWeekOffTemplatesToNext} applying={applyingWeekOff} />
             </div>
           )}
 
