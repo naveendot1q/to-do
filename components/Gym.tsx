@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Check, ChevronDown, ChevronUp, Dumbbell, TrendingUp, X, Scale, Timer, Pencil, RotateCcw, Copy, Save } from "lucide-react";
 import { GymSession, Exercise, ExerciseSet, WorkoutSplit, ExerciseCategory, BodyWeightLog } from "@/lib/types";
+import WorkoutPlayer from "@/components/WorkoutPlayer";
 
 interface Props {
   sessions: GymSession[];
@@ -357,6 +358,17 @@ function AddExercisePanel({ split, onAdd, onClose }: { split: WorkoutSplit; onAd
 // ── SESSION VIEW ──────────────────────────────────────────────────────────────
 function SessionView({ session, onUpdate, onDelete }: { session: GymSession; onUpdate: (u: Partial<GymSession>) => void; onDelete: () => void }) {
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [playing, setPlaying] = useState(false);
+
+  if (playing) {
+    return (
+      <WorkoutPlayer
+        session={session}
+        onUpdate={onUpdate}
+        onClose={() => setPlaying(false)}
+      />
+    );
+  }
   const split = SPLITS.find(s => s.key === session.split)!;
   const volume = calcVolume(session.exercises);
   const completedExercises = session.exercises.filter(ex => ex.sets.every(s => s.completed)).length;
@@ -429,6 +441,15 @@ function SessionView({ session, onUpdate, onDelete }: { session: GymSession; onU
         style={{ background: "rgba(232,197,71,0.06)", border: "1px dashed rgba(232,197,71,0.25)", color: "var(--accent)" }}>
         <Plus size={14} /> Add Exercise
       </button>
+
+      {session.exercises.length > 0 && (
+        <button onClick={() => setPlaying(true)}
+          className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 mb-3"
+          style={{ background: "linear-gradient(135deg, #6366f1 0%, #a78bfa 100%)", color: "#fff", boxShadow: "0 4px 20px rgba(99,102,241,0.35)" }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+          Start Workout
+        </button>
+      )}
       <button onClick={() => onUpdate({ completed: !session.completed })}
         className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2"
         style={{ background: session.completed ? "rgba(46,213,115,0.15)" : "var(--accent)", color: session.completed ? "#2ed573" : "#0a0a0f", border: session.completed ? "1px solid rgba(46,213,115,0.3)" : "none" }}>
