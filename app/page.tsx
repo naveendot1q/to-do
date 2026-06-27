@@ -507,7 +507,7 @@ export default function OS() {
           {getNav("meals")==="history" && (
             <div style={{paddingTop:8}}>
               <p style={{fontSize:11,color:"var(--muted)",fontWeight:600,letterSpacing:"0.08em",marginBottom:12}}>RECENT MEALS</p>
-              {[...new Set(meals.map(m=>m.date))].sort().reverse().slice(0,10).map(date=>{
+              {Array.from(new Set(meals.map(m=>m.date))).sort().reverse().slice(0,10).map(date=>{
                 const dayMeals = meals.filter(m=>m.date===date);
                 const totalCal = dayMeals.reduce((a,m)=>a+(m.calories||0),0);
                 return(
