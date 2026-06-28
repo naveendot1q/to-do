@@ -1,140 +1,140 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
-import { Bell, BellOff, X } from "lucide-react";
+import { Bell, X, Check } from "lucide-react";
 import { Todo } from "@/lib/types";
 
-interface Props {
-  todos: Todo[];
-  selectedDate: string | null;
-}
+interface Props { todos: Todo[]; selectedDate: string | null; }
 
-function toLocalDateStr(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+function toLocalDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
 export default function NotificationManager({ todos, selectedDate }: Props) {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [showBanner, setShowBanner] = useState(false);
-  const scheduledRef = useRef<Set<string>>(new Set());
   const swRef = useRef<ServiceWorkerRegistration | null>(null);
+  const syncRef = useRef<ReturnType<typeof setInterval>|null>(null);
 
   useEffect(() => {
     if (!("Notification" in window)) return;
     setPermission(Notification.permission);
     if (Notification.permission === "default") {
-      // Show banner after 3 seconds
-      const t = setTimeout(() => setShowBanner(true), 3000);
-      return () => clearTimeout(t);
+      // Show banner after 2 seconds
+      setTimeout(() => setShowBanner(true), 2000);
     }
   }, []);
 
+  // Get SW ref
   useEffect(() => {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.ready.then(reg => { swRef.current = reg; });
     }
   }, []);
 
+  // Sync tasks to SW every minute
   useEffect(() => {
     if (permission !== "granted") return;
-    scheduleNotifications();
-    // Re-check every minute
-    const iv = setInterval(scheduleNotifications, 60000);
-    return () => clearInterval(iv);
+    syncTasks();
+    syncRef.current = setInterval(syncTasks, 60_000);
+    return () => { if (syncRef.current) clearInterval(syncRef.current); };
   }, [todos, permission]);
 
-  function scheduleNotifications() {
-    const todayStr = toLocalDateStr(new Date());
-    const now = new Date();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
-
-    // Only schedule for today's tasks with start_time
-    const todayTasks = todos.filter(t =>
-      !t.completed && t.start_time && t.due_date === todayStr
-    );
-
-    todayTasks.forEach(task => {
-      if (!task.start_time) return;
-      const [h, m] = task.start_time.split(":").map(Number);
-      const taskMins = h * 60 + m;
-      const fiveBefore = taskMins - 5;
-      const key = `${task.id}-${task.start_time}`;
-
-      // Don't reschedule already scheduled ones
-      if (scheduledRef.current.has(key)) return;
-
-      const minsUntilNotify = fiveBefore - nowMins;
-
-      // Schedule if it's in the future (within next 24h)
-      if (minsUntilNotify > 0 && minsUntilNotify < 1440) {
-        const delayMs = minsUntilNotify * 60 * 1000;
-        scheduledRef.current.add(key);
-
-        const timeLabel = `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
-
-        // Send to SW for reliable delivery
-        if (swRef.current) {
-          swRef.current.active?.postMessage({
-            type: "SCHEDULE_NOTIFICATION",
-            title: `⏰ Starting soon: ${task.title}`,
-            body: `Task starts at ${timeLabel} · 5 minutes away`,
-            delay: delayMs,
-          });
-        } else {
-          // Fallback: browser setTimeout
-          setTimeout(() => {
-            new Notification(`⏰ Starting soon: ${task.title}`, {
-              body: `Task starts at ${timeLabel} · 5 minutes away`,
-              icon: "/icons/icon-192x192.png",
-              tag: key,
-            });
-          }, delayMs);
-        }
-      }
-    });
+  function syncTasks() {
+    if (!swRef.current?.active) return;
+    const today = toLocalDateStr(new Date());
+    const todayTasks = todos
+      .filter(t => t.due_date === today)
+      .map(t => ({
+        id: t.id,
+        title: t.title,
+        start_time: t.start_time || null,
+        end_time: t.end_time || null,
+        priority: t.priority,
+        completed: t.completed,
+        due_date: t.due_date,
+      }));
+    swRef.current.active!.postMessage({ type: "SYNC_TASKS", tasks: todayTasks });
   }
 
   async function requestPermission() {
-    const result = await Notification.requestPermission();
-    setPermission(result);
+    const r = await Notification.requestPermission();
+    setPermission(r);
     setShowBanner(false);
-    if (result === "granted") scheduleNotifications();
+    if (r === "granted") {
+      // Immediately sync + show status
+      await navigator.serviceWorker.ready.then(reg => { swRef.current = reg; syncTasks(); });
+    }
   }
 
   if (!("Notification" in window)) return null;
 
   return (
     <>
-      {/* Floating permission banner */}
+      {/* Permission banner */}
       {showBanner && permission === "default" && (
-        <div className="animate-slide-up" style={{
-          position: "fixed", bottom: 80, left: 16, right: 16, zIndex: 100,
-          background: "var(--card)", border: "1px solid rgba(232,197,71,0.25)",
-          borderRadius: 16, padding: "14px 16px",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          display: "flex", alignItems: "center", gap: 12,
+        <div style={{
+          position:"fixed",bottom:20,left:12,right:12,zIndex:9990,
+          background:"rgba(26,26,36,0.97)",
+          border:"1px solid rgba(232,197,71,0.3)",
+          borderRadius:20,padding:"16px 16px",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.6)",
+          display:"flex",alignItems:"flex-start",gap:12,
+          backdropFilter:"blur(20px)",
         }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: "rgba(232,197,71,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Bell size={18} style={{ color: "var(--accent)" }} />
+          <div style={{width:44,height:44,borderRadius:14,flexShrink:0,
+            background:"linear-gradient(135deg,rgba(232,197,71,0.2),rgba(232,197,71,0.05))",
+            border:"1px solid rgba(232,197,71,0.3)",
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem"}}>
+            🔔
           </div>
-          <div style={{ flex: 1 }}>
-            <p style={{ color: "#fff", fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Enable Notifications</p>
-            <p style={{ color: "var(--muted)", fontSize: 11 }}>Get reminded 5 min before each task starts</p>
+          <div style={{flex:1,minWidth:0}}>
+            <p style={{color:"#fff",fontSize:14,fontWeight:700,marginBottom:3}}>Enable Notifications</p>
+            <p style={{color:"rgba(255,255,255,0.45)",fontSize:12,lineHeight:1.4}}>
+              Get notified when tasks start, are running, and show a live status in your notification bar
+            </p>
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={requestPermission}
+                style={{flex:1,background:"linear-gradient(135deg,#e8c547,#f0d060)",border:"none",
+                  borderRadius:12,padding:"10px",color:"#0a0a0f",fontSize:13,fontWeight:800,cursor:"pointer",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                <Bell size={14}/> Enable
+              </button>
+              <button onClick={()=>setShowBanner(false)}
+                style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",
+                  borderRadius:12,padding:"10px 14px",color:"rgba(255,255,255,0.4)",fontSize:13,cursor:"pointer"}}>
+                Later
+              </button>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={requestPermission} style={{ background: "var(--accent)", border: "none", borderRadius: 8, padding: "6px 14px", color: "var(--obsidian)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-              Enable
-            </button>
-            <button onClick={() => setShowBanner(false)} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", color: "var(--muted)", fontSize: 12, cursor: "pointer" }}>
-              <X size={14} />
-            </button>
-          </div>
+          <button onClick={()=>setShowBanner(false)}
+            style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",flexShrink:0,padding:2}}>
+            <X size={16}/>
+          </button>
         </div>
       )}
 
-      {/* Status indicator in corner */}
+      {/* Notification active dot */}
       {permission === "granted" && (
-        <div title="Notifications active" style={{ position: "fixed", top: 16, right: 16, zIndex: 100, width: 8, height: 8, borderRadius: "50%", background: "var(--success)", boxShadow: "0 0 6px var(--success)" }} />
+        <div style={{position:"fixed",top:14,right:14,zIndex:9990,
+          width:8,height:8,borderRadius:"50%",
+          background:"#2ed573",
+          boxShadow:"0 0 0 2px rgba(46,213,115,0.3), 0 0 8px rgba(46,213,115,0.6)"}}
+          title="Notifications active — live status showing in notification bar"/>
+      )}
+
+      {/* Denied state - show re-request hint */}
+      {permission === "denied" && (
+        <div style={{position:"fixed",bottom:20,left:12,right:12,zIndex:9990,
+          background:"rgba(255,71,87,0.1)",border:"1px solid rgba(255,71,87,0.2)",
+          borderRadius:14,padding:"12px 16px",
+          display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:16}}>🔕</span>
+          <div style={{flex:1}}>
+            <p style={{color:"#ff4757",fontSize:12,fontWeight:600}}>Notifications blocked</p>
+            <p style={{color:"rgba(255,255,255,0.4)",fontSize:11}}>Enable in browser Settings → Site Settings → Notifications</p>
+          </div>
+          <button onClick={()=>setPermission("default")} style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer"}}><X size={14}/></button>
+        </div>
       )}
     </>
   );

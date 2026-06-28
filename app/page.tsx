@@ -56,13 +56,12 @@ function computeMood(todos: Todo[], sel: string | null): AppMood {
 
 // ── APP REGISTRY ─────────────────────────────────────────────────────────────
 const APP_DEFS: AppDefinition[] = [
-  { id:"routine",  name:"Routine",  icon:"🌅", gradient:"linear-gradient(135deg,#667eea,#764ba2)", docked:true  },
-  { id:"tasks",    name:"Tasks",    icon:"✅", gradient:"linear-gradient(135deg,#11998e,#38ef7d)", docked:true  },
-  { id:"gym",      name:"Gym",      icon:"💪", gradient:"linear-gradient(135deg,#f7374f,#88023f)", docked:true  },
-  { id:"meals",    name:"Meals",    icon:"🥗", gradient:"linear-gradient(135deg,#f7971e,#ffd200)", docked:true  },
-  { id:"notes",    name:"Notes",    icon:"📝", gradient:"linear-gradient(135deg,#4facfe,#00f2fe)"  },
-  { id:"calendar", name:"Calendar", icon:"📅", gradient:"linear-gradient(135deg,#a18cd1,#fbc2eb)"  },
-  { id:"settings", name:"Settings", icon:"⚙️", gradient:"linear-gradient(135deg,#434343,#000)"     },
+  { id:"routine",  name:"Routine",  icon:"🌅", gradient:"linear-gradient(135deg,#667eea,#764ba2)", description:"Daily schedule & habit tracking" },
+  { id:"tasks",    name:"Tasks",    icon:"✅", gradient:"linear-gradient(135deg,#11998e,#38ef7d)", description:"To-do list, priorities & deadlines" },
+  { id:"gym",      name:"Gym",      icon:"💪", gradient:"linear-gradient(135deg,#f7374f,#88023f)", description:"Workout sessions & body weight" },
+  { id:"meals",    name:"Meals",    icon:"🥗", gradient:"linear-gradient(135deg,#f7971e,#ffd200)", description:"Nutrition tracking & macros" },
+  { id:"notes",    name:"Notes",    icon:"📝", gradient:"linear-gradient(135deg,#4facfe,#00f2fe)", description:"Quick notes & ideas" },
+  { id:"calendar", name:"Calendar", icon:"📅", gradient:"linear-gradient(135deg,#a18cd1,#fbc2eb)", description:"Stats, consistency & history" },
 ];
 
 // Nav tabs per app

@@ -195,16 +195,28 @@ function fmtDuration(s: number) { if (s < 60) return `${s}s`; return `${Math.flo
 function calcVolume(exercises: Exercise[]) {
   return exercises.reduce((t, ex) => t + ex.sets.reduce((s, set) => s + (set.completed && !ex.is_timed ? set.weight * set.reps : 0), 0), 0);
 }
-function buildPresetExercises(split: WorkoutSplit): Exercise[] {
-  return (PRESET_WORKOUTS[split]||[]).map((p,i) => ({
-    id: uid(), name: p.name, category: p.category, order: i,
-    is_timed: p.is_timed||false, notes: p.notes||"",
-    sets: Array.from({length: p.sets},(_,si) => ({
-      set_number: si+1, weight: 0, reps: p.reps,
-      duration_seconds: p.is_timed?(p.duration_seconds||60):undefined,
-      set_type: p.is_timed?"duration":"reps" as any, completed: false,
-    })),
-  }));
+function buildPresetExercises(split: WorkoutSplit, prevSession?: GymSession | null): Exercise[] {
+  return (PRESET_WORKOUTS[split]||[]).map((p,i) => {
+    // Look up previous performance for this exercise
+    const prevEx = prevSession?.exercises.find(e => e.name === p.name);
+    const prevSets = prevEx?.sets.filter(s => s.completed) || [];
+    return {
+      id: uid(), name: p.name, category: p.category, order: i,
+      is_timed: p.is_timed||false, notes: p.notes||"",
+      sets: Array.from({length: p.sets}, (_, si) => {
+        // Use previous set data if available, otherwise use preset defaults
+        const prev = prevSets[si] || prevSets[prevSets.length - 1]; // last set as fallback
+        return {
+          set_number: si+1,
+          weight: prev?.weight ?? 0,
+          reps: prev?.reps ?? p.reps,
+          duration_seconds: p.is_timed ? (prev?.duration_seconds ?? p.duration_seconds ?? 60) : undefined,
+          set_type: p.is_timed ? "duration" : "reps" as any,
+          completed: false,
+        };
+      }),
+    };
+  });
 }
 
 // ── TIMED SET ROW ─────────────────────────────────────────────────────────────
@@ -656,7 +668,9 @@ export default function Gym({ sessions, bodyWeightLogs, selectedDate, onAdd, onU
 
   async function createSession() {
     const split=SPLITS.find(s=>s.key===selectedSplit)!;
-    await onAdd({date,split:selectedSplit,split_label:split.label,exercises:usePreset&&selectedSplit!=="custom"?buildPresetExercises(selectedSplit):[],warmup_done:false,warmup_type:"1km Run",completed:false});
+    // Find the most recent session with same split to pre-load weights
+    const prevForNewSession = getPrevSession(sessions, date, selectedSplit);
+    await onAdd({date,split:selectedSplit,split_label:split.label,exercises:usePreset&&selectedSplit!=="custom"?buildPresetExercises(selectedSplit, prevForNewSession):[],warmup_done:false,warmup_type:"1km Run",completed:false});
     setCreating(false);
   }
 
