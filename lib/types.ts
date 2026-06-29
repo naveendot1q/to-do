@@ -98,7 +98,7 @@ export interface Meal {
 
 // ─── GYM TYPES ────────────────────────────────────────────────────────────────
 
-export type WorkoutSplit = 'chest_triceps_abs' | 'back_biceps_abs' | 'legs_shoulders_cardio' | 'custom';
+export type WorkoutSplit = 'chest_triceps_abs' | 'back_biceps_abs' | 'legs_shoulders_cardio' | 'upper_body_1' | 'lower_body_1' | 'upper_body_2' | 'lower_body_2' | 'custom';
 export type ExerciseCategory = 'chest' | 'back' | 'shoulders' | 'biceps' | 'triceps' | 'legs' | 'abs' | 'forearms' | 'cardio' | 'compound';
 export type SetType = 'reps' | 'duration';
 
